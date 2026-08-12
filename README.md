@@ -59,6 +59,17 @@ Frontend runs at `http://localhost:5173`.
 Drop sample cards that already have the correct bleed into `reference-cards/`
 (gitignored) to compare pipeline output against and tune sizing/quality.
 
+## Known issues (in progress)
+
+- **Frontend "Failed to fetch" on upload**: seen while testing locally with the backend
+  (port 8000), IOPaint (port 8090), and frontend (port 5173) all running. Backend log
+  showed three `POST /api/jobs` requests landing in quick succession right after
+  several `uvicorn --reload` restarts (triggered by live edits to `bleed.py`) -
+  possibly the reloads dropping an in-flight connection, or a leftover multi-submit
+  from before the double-click fix in `App.tsx` took effect via HMR. Not yet
+  root-caused - pick this up next session by reproducing without concurrent backend
+  edits/reloads and checking the browser console for the actual failed request.
+
 ## Assumptions to verify
 
 - **Card dimensions**: `backend/app/config.py` is calibrated against
