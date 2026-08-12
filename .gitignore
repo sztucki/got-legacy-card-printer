@@ -1,0 +1,15 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/jobs/
+*.pyc
+
+# Env files
+.env
+backend/.env
+
+# Reference cards (user-provided, not checked in)
+reference-cards/
+
+.DS_Store
