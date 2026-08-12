@@ -24,3 +24,5 @@ JOBS_DIR = Path(os.getenv("JOBS_DIR", "./jobs")).resolve()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 UPSCAYL_BIN_PATH = os.getenv("UPSCAYL_BIN_PATH")
+UPSCAYL_MODELS_DIR = os.getenv("UPSCAYL_MODELS_DIR")
+UPSCAYL_MODEL_NAME = os.getenv("UPSCAYL_MODEL_NAME", "upscayl-standard-4x")

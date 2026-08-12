@@ -2,7 +2,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from app.config import UPSCAYL_BIN_PATH
+from app.config import UPSCAYL_BIN_PATH, UPSCAYL_MODEL_NAME, UPSCAYL_MODELS_DIR
 
 
 class UpscaylNotConfiguredError(RuntimeError):
@@ -26,13 +26,15 @@ def upscale(input_path: Path, output_path: Path) -> None:
         )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    # -i/-o match the realesrgan-ncnn-vulkan CLI that Upscayl bundles; adjust
-    # if your installed binary's flags differ (e.g. add -n <model> -s <scale>).
-    result = subprocess.run(
-        [UPSCAYL_BIN_PATH, "-i", str(input_path), "-o", str(output_path)],
-        capture_output=True,
-        text=True,
-    )
+    # -i/-o/-m/-n match the realesrgan-ncnn-vulkan CLI that Upscayl bundles.
+    # -m/-n are required because the bundled models folder doesn't include
+    # the binary's built-in default model name (realesrgan-x4plus).
+    command = [UPSCAYL_BIN_PATH, "-i", str(input_path), "-o", str(output_path)]
+    if UPSCAYL_MODELS_DIR:
+        command += ["-m", UPSCAYL_MODELS_DIR]
+    if UPSCAYL_MODEL_NAME:
+        command += ["-n", UPSCAYL_MODEL_NAME]
+    result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(
             f"Upscayl CLI failed (exit {result.returncode}): {result.stderr.strip()}"
