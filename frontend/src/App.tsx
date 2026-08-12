@@ -12,17 +12,21 @@ function App() {
   const [originalPreviewUrl, setOriginalPreviewUrl] = useState<string>("");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
+  const previewUrlRef = useRef<string>("");
 
   useEffect(() => {
     return () => {
       if (pollRef.current) window.clearInterval(pollRef.current);
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     };
   }, []);
 
   async function handleUpload(file: File, rotateOverride: boolean | null) {
     setUploadError(null);
     setJob(null);
-    setOriginalPreviewUrl(URL.createObjectURL(file));
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = URL.createObjectURL(file);
+    setOriginalPreviewUrl(previewUrlRef.current);
 
     try {
       const { job_id } = await createJob(file, rotateOverride);

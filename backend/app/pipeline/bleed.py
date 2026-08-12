@@ -29,10 +29,16 @@ def _compose_canvas(trim_image: Image.Image) -> Image.Image:
 
 
 def _build_mask(canvas: Image.Image) -> Image.Image:
-    """Build an edit mask: transparent over the protected trim area, opaque
-    (white) over the border ring that should be outpainted."""
-    mask = Image.new("RGBA", canvas.size, (255, 255, 255, 255))
-    protected = Image.new("RGBA", (canvas.width - 2 * BLEED_MARGIN_PX, canvas.height - 2 * BLEED_MARGIN_PX), (0, 0, 0, 0))
+    """Build an edit mask per OpenAI's convention: transparent pixels are
+    edited, opaque pixels are preserved. So the border ring (to be
+    outpainted) stays transparent, and the trim area (to be protected) is
+    painted opaque white."""
+    mask = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    protected = Image.new(
+        "RGBA",
+        (canvas.width - 2 * BLEED_MARGIN_PX, canvas.height - 2 * BLEED_MARGIN_PX),
+        (255, 255, 255, 255),
+    )
     mask.paste(protected, (BLEED_MARGIN_PX, BLEED_MARGIN_PX))
     return mask
 
