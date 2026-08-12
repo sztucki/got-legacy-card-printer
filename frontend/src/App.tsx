@@ -11,6 +11,7 @@ function App() {
   const [job, setJob] = useState<JobState | null>(null);
   const [originalPreviewUrl, setOriginalPreviewUrl] = useState<string>("");
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const pollRef = useRef<number | null>(null);
   const previewUrlRef = useRef<string>("");
 
@@ -22,6 +23,9 @@ function App() {
   }, []);
 
   async function handleUpload(file: File, rotateOverride: boolean | null) {
+    if (isUploading || isProcessing) return;
+
+    setIsUploading(true);
     setUploadError(null);
     setJob(null);
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -33,6 +37,8 @@ function App() {
       pollJob(job_id);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setIsUploading(false);
     }
   }
 
@@ -56,7 +62,7 @@ function App() {
   return (
     <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
       <h1>Legacy Card Bleed Printer</h1>
-      <UploadForm onUpload={handleUpload} disabled={isProcessing} />
+      <UploadForm onUpload={handleUpload} disabled={isUploading || isProcessing} />
 
       {uploadError && <p style={{ color: "red" }}>{uploadError}</p>}
       {job?.status === "failed" && (

@@ -1,5 +1,6 @@
 import base64
 import io
+import threading
 
 import requests
 from PIL import Image
@@ -14,6 +15,12 @@ PROMPT = (
 )
 
 REQUEST_TIMEOUT_SECONDS = 300
+
+# Stable Diffusion on Apple's MPS backend cannot safely run two overlapping
+# generations - concurrent requests have been observed to crash the IOPaint
+# server outright (Metal command encoder assertion failure). Jobs run in a
+# threadpool, so this serializes all outpainting calls within this process.
+_iopaint_lock = threading.Lock()
 
 
 class IOPaintNotAvailableError(RuntimeError):
@@ -62,11 +69,12 @@ def generate_bleed(trim_image: Image.Image) -> Image.Image:
     }
 
     try:
-        response = requests.post(
-            f"{IOPAINT_API_URL}/api/v1/inpaint",
-            json=payload,
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        )
+        with _iopaint_lock:
+            response = requests.post(
+                f"{IOPAINT_API_URL}/api/v1/inpaint",
+                json=payload,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
     except requests.ConnectionError as exc:
         raise IOPaintNotAvailableError(
             f"Couldn't reach the local IOPaint server at {IOPAINT_API_URL}. "
