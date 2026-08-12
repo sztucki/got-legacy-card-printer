@@ -74,6 +74,13 @@ def generate_bleed(trim_image: Image.Image) -> Image.Image:
             "--model=runwayml/stable-diffusion-inpainting --device=mps "
             "(see backend/.env.example)."
         ) from exc
+    except requests.Timeout as exc:
+        raise IOPaintNotAvailableError(
+            f"IOPaint server at {IOPAINT_API_URL} didn't respond within "
+            f"{REQUEST_TIMEOUT_SECONDS}s. Outpainting can be slow on CPU-only "
+            "setups - try a GPU device (--device=mps/cuda), a lighter model, "
+            "or raise REQUEST_TIMEOUT_SECONDS."
+        ) from exc
 
     if response.status_code != 200:
         raise RuntimeError(
