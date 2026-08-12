@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Optional, Tuple
 
 from app.config import UPSCAYL_BIN_PATH, UPSCAYL_MODEL_NAME, UPSCAYL_MODELS_DIR
 
@@ -9,8 +10,14 @@ class UpscaylNotConfiguredError(RuntimeError):
     pass
 
 
-def upscale(input_path: Path, output_path: Path) -> None:
+def upscale(
+    input_path: Path, output_path: Path, resize_to: Optional[Tuple[int, int]] = None
+) -> None:
     """Upscale an image by invoking the Upscayl CLI as a subprocess.
+
+    If resize_to is given, the model's fixed scale factor (e.g. 4x) is
+    followed by an exact resize to those dimensions (via the CLI's -r flag)
+    so the output lands on a precise target pixel size.
 
     Raises UpscaylNotConfiguredError if UPSCAYL_BIN_PATH isn't set or the
     binary can't be found, rather than silently skipping the step.
@@ -42,6 +49,8 @@ def upscale(input_path: Path, output_path: Path) -> None:
         "-m", UPSCAYL_MODELS_DIR,
         "-n", UPSCAYL_MODEL_NAME,
     ]
+    if resize_to:
+        command += ["-r", f"{resize_to[0]}x{resize_to[1]}"]
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(
