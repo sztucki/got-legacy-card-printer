@@ -25,9 +25,8 @@ def run_pipeline(job_id: str, rotate_override: Optional[bool] = None) -> None:
         normalized.save(jobs.stage_path(job_id, "normalized"))
         jobs.mark_stage_complete(job_id, "normalized")
 
-        # gpt-image-1 can only generate at a fixed size, so the AI bleed
-        # step runs first and the whole result (trim + new border) is
-        # scaled to final print resolution after.
+        # AI bleed generation runs at working resolution, then the whole
+        # result (trim + new border) is scaled to final print resolution.
         bled = generate_bleed(normalized)
         bled.save(jobs.stage_path(job_id, "bleed"))
         jobs.mark_stage_complete(job_id, "bleed")

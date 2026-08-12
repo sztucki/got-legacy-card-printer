@@ -1,5 +1,10 @@
 # Legacy Card Bleed Printer — POC Web App
 
+> **Update**: bleed generation was switched from the OpenAI images API to a
+> locally-run [IOPaint](https://github.com/Sanster/IOPaint) server (open
+> source, no per-call cost) - see README.md for current setup. The original
+> decisions below are kept as a historical record of the initial design.
+
 ## Context
 
 `got-legacy-card-printer` currently contains only a placeholder README — this is a greenfield build. The goal is a local-only POC web app that takes a legacy game card image (correct trim size, but no printer's bleed) and produces a print-ready version: reoriented if needed, upscaled via Upscayl, and extended with an AI-generated bleed edge that plausibly continues the card's artwork outward. The user will drop in reference cards (already at the correct bleed-included size) to compare against and tune the pipeline. The app should let you upload a card, watch it get processed, and view the original and processed card side by side.

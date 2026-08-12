@@ -11,10 +11,25 @@ processed versions side by side. See [PLAN.md](./PLAN.md) for the full design.
 - Node.js 18+
 - [Upscayl](https://github.com/upscayl/upscayl) installed locally (desktop app or the
   bundled CLI). The desktop app's CLI binary is typically at:
-  `/Applications/upscayl.app/Contents/Resources/bin/upscayl-bin` on macOS.
-- An OpenAI API key with access to the images API (`gpt-image-1`).
+  `/Applications/Upscayl.app/Contents/Resources/bin/upscayl-bin` on macOS.
+- [IOPaint](https://github.com/Sanster/IOPaint) installed locally (`pip install iopaint`)
+  for AI bleed outpainting - fully local/open-source, no API key or per-call cost.
 
 ## Setup
+
+### IOPaint (bleed outpainting)
+
+Runs as its own local server, separate from this app's backend - start it once and
+leave it running (it keeps the model loaded in memory):
+
+```sh
+pip install iopaint
+iopaint start --model=runwayml/stable-diffusion-inpainting --device=mps
+```
+
+Use `--device=cuda` on an NVIDIA machine, or omit `--device` for CPU-only (much
+slower). The model (~4GB) downloads on first run. Server listens on
+`http://127.0.0.1:8080` by default, matching `IOPAINT_API_URL` in `.env.example`.
 
 ### Backend
 
@@ -23,7 +38,7 @@ cd backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env  # fill in OPENAI_API_KEY and UPSCAYL_BIN_PATH
+cp .env.example .env  # fill in UPSCAYL_BIN_PATH, UPSCAYL_MODELS_DIR
 uvicorn app.main:app --reload
 ```
 
@@ -46,11 +61,12 @@ Drop sample cards that already have the correct bleed into `reference-cards/`
 
 ## Assumptions to verify
 
-- **Card dimensions**: `backend/app/config.py` assumes standard trading card size
-  (2.5"x3.5" trim, 2.72"x3.72" bleed-included, ~0.125" bleed per side). Update these
-  constants once real reference cards confirm the actual target dimensions.
+- **Card dimensions**: `backend/app/config.py` is calibrated against
+  `reference-cards/example-card/1_Bonifer_ENG.tif` (822x1122px @ 300 DPI = 69.6x95.0mm
+  bleed-included), assuming a standard 3mm bleed margin per side. Update these
+  constants if a different reference card suggests otherwise.
 - **"Correct side"**: interpreted as orientation (rotation), not physical sizing. The
   app applies a best-guess rotation heuristic with a manual override.
-- **Upscayl CLI flags**: `backend/app/pipeline/upscale.py` assumes `-i`/`-o` flags
-  matching the realesrgan-ncnn-vulkan CLI Upscayl bundles; adjust if your installed
-  binary differs.
+- **IOPaint outpainting quality**: `runwayml/stable-diffusion-inpainting` is a
+  reasonable general-purpose default, but hasn't been tuned against real legacy card
+  art - try other IOPaint-supported inpainting models if bleed quality is poor.
