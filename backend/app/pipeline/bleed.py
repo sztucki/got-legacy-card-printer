@@ -4,7 +4,13 @@ import io
 from openai import OpenAI
 from PIL import Image
 
-from app.config import GPT_IMAGE_BLEED_MARGIN_PX, GPT_IMAGE_GENERATION_SIZE_PX, OPENAI_API_KEY
+from app.config import (
+    GPT_IMAGE_BLEED_MARGIN_PX,
+    GPT_IMAGE_GENERATION_SIZE_PX,
+    GPT_IMAGE_WORK_OFFSET_PX,
+    GPT_IMAGE_WORK_SIZE_PX,
+    OPENAI_API_KEY,
+)
 
 PROMPT = (
     "Extend this trading card's existing artwork and border outward to fill "
@@ -18,35 +24,51 @@ class OpenAINotConfiguredError(RuntimeError):
     pass
 
 
+def _work_rect() -> tuple:
+    x, y = GPT_IMAGE_WORK_OFFSET_PX
+    w, h = GPT_IMAGE_WORK_SIZE_PX
+    return (x, y, x + w, y + h)
+
+
 def _compose_canvas(trim_image: Image.Image) -> Image.Image:
-    """Center the trim image on a transparent canvas sized to gpt-image-1's
-    generation size (the trim is downsampled to fit - this step is about
-    generating plausible bleed content, not final resolution)."""
+    """Place the trim image, centered with the correct bleed margin, inside
+    the work rectangle - itself centered on gpt-image-1's fixed generation
+    canvas. The work rectangle's aspect ratio matches the card's true aspect
+    ratio (unlike the full generation canvas), so no stretching occurs."""
     canvas = Image.new("RGBA", GPT_IMAGE_GENERATION_SIZE_PX, (0, 0, 0, 0))
+    work_x, work_y = GPT_IMAGE_WORK_OFFSET_PX
+    work_w, work_h = GPT_IMAGE_WORK_SIZE_PX
     inner_size = (
-        GPT_IMAGE_GENERATION_SIZE_PX[0] - 2 * GPT_IMAGE_BLEED_MARGIN_PX,
-        GPT_IMAGE_GENERATION_SIZE_PX[1] - 2 * GPT_IMAGE_BLEED_MARGIN_PX,
+        work_w - 2 * GPT_IMAGE_BLEED_MARGIN_PX,
+        work_h - 2 * GPT_IMAGE_BLEED_MARGIN_PX,
     )
     resized = trim_image.convert("RGBA").resize(inner_size)
-    canvas.paste(resized, (GPT_IMAGE_BLEED_MARGIN_PX, GPT_IMAGE_BLEED_MARGIN_PX))
+    canvas.paste(
+        resized, (work_x + GPT_IMAGE_BLEED_MARGIN_PX, work_y + GPT_IMAGE_BLEED_MARGIN_PX)
+    )
     return canvas
 
 
 def _build_mask(canvas: Image.Image) -> Image.Image:
     """Build an edit mask per OpenAI's convention: transparent pixels are
-    edited, opaque pixels are preserved. So the border ring (to be
-    outpainted) stays transparent, and the trim area (to be protected) is
-    painted opaque white."""
+    edited, opaque pixels are preserved. So everywhere outside the trim
+    (including the generation canvas's letterbox margin, which gets
+    discarded after generation) stays transparent/editable, and the trim
+    area is painted opaque white to protect it."""
+    work_x, work_y = GPT_IMAGE_WORK_OFFSET_PX
+    work_w, work_h = GPT_IMAGE_WORK_SIZE_PX
     mask = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
     protected = Image.new(
         "RGBA",
         (
-            canvas.width - 2 * GPT_IMAGE_BLEED_MARGIN_PX,
-            canvas.height - 2 * GPT_IMAGE_BLEED_MARGIN_PX,
+            work_w - 2 * GPT_IMAGE_BLEED_MARGIN_PX,
+            work_h - 2 * GPT_IMAGE_BLEED_MARGIN_PX,
         ),
         (255, 255, 255, 255),
     )
-    mask.paste(protected, (GPT_IMAGE_BLEED_MARGIN_PX, GPT_IMAGE_BLEED_MARGIN_PX))
+    mask.paste(
+        protected, (work_x + GPT_IMAGE_BLEED_MARGIN_PX, work_y + GPT_IMAGE_BLEED_MARGIN_PX)
+    )
     return mask
 
 
@@ -61,11 +83,12 @@ def _to_png_file(image: Image.Image, name: str) -> tuple:
 
 
 def generate_bleed(trim_image: Image.Image) -> Image.Image:
-    """Generate a trim+bleed image at gpt-image-1's fixed generation size.
+    """Generate a trim+bleed image at the card's true aspect ratio.
 
-    The result is NOT at final print resolution - the caller is expected to
-    upscale the whole returned image afterwards to reach the true target
-    pixel dimensions, since gpt-image-1 can't generate at print DPI directly.
+    The result is sized GPT_IMAGE_WORK_SIZE_PX, not final print resolution -
+    the caller is expected to scale the whole returned image afterwards to
+    reach the true target pixel dimensions, since gpt-image-1 can't generate
+    at print DPI directly.
     """
     if not OPENAI_API_KEY:
         raise OpenAINotConfiguredError(
@@ -85,4 +108,5 @@ def generate_bleed(trim_image: Image.Image) -> Image.Image:
     )
 
     image_bytes = io.BytesIO(base64.b64decode(response.data[0].b64_json))
-    return Image.open(image_bytes).convert("RGB")
+    generated = Image.open(image_bytes).convert("RGB")
+    return generated.crop(_work_rect())

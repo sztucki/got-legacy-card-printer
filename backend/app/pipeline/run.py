@@ -25,18 +25,25 @@ def run_pipeline(job_id: str, rotate_override: Optional[bool] = None) -> None:
         normalized.save(jobs.stage_path(job_id, "normalized"))
         jobs.mark_stage_complete(job_id, "normalized")
 
-        # gpt-image-1 can only generate at a fixed size, well below print
-        # resolution, so the AI bleed step runs first and the whole result
-        # (trim + new border) is upscaled to final print resolution after.
+        # gpt-image-1 can only generate at a fixed size, so the AI bleed
+        # step runs first and the whole result (trim + new border) is
+        # scaled to final print resolution after.
         bled = generate_bleed(normalized)
         bled.save(jobs.stage_path(job_id, "bleed"))
         jobs.mark_stage_complete(job_id, "bleed")
 
-        upscale(
-            jobs.stage_path(job_id, "bleed"),
-            jobs.stage_path(job_id, "upscaled"),
-            resize_to=BLEED_SIZE_PX,
-        )
+        final_path = jobs.stage_path(job_id, "upscaled")
+        if bled.width >= BLEED_SIZE_PX[0] and bled.height >= BLEED_SIZE_PX[1]:
+            # The AI result is already at or above target resolution - a
+            # plain resize gets there without paying for an unnecessary
+            # GPU super-resolution pass that would just be downscaled again.
+            bled.resize(BLEED_SIZE_PX, Image.LANCZOS).save(final_path)
+        else:
+            upscale(
+                jobs.stage_path(job_id, "bleed"),
+                final_path,
+                resize_to=BLEED_SIZE_PX,
+            )
         jobs.mark_stage_complete(job_id, "upscaled")
 
         jobs.set_status(job_id, JobStatus.COMPLETE)
