@@ -64,12 +64,17 @@ Drop sample cards that already have the correct bleed into `reference-cards/`
 
 ## Known issues (in progress)
 
-- None currently open. The previously-reported "Failed to fetch" on upload did not
-  reproduce in a clean run (IOPaint, backend, and frontend started fresh, no
-  concurrent `uvicorn --reload` restarts) - a full upload completed end-to-end through
-  the UI without error. It was likely a `uvicorn --reload` artifact from editing
-  `bleed.py` mid-session rather than a standing bug; `App.tsx` already guards against
-  double-submit. Re-open this if it recurs.
+- **IOPaint gets slower with each back-to-back generation, and can eventually time
+  out**: observed on Apple Silicon (`--device=mps`) - successive outpainting calls
+  within the same long-running `iopaint start` process take progressively longer
+  (seen going from ~130s to ~200s+ over a handful of calls), consistent with MPS
+  memory not being fully released between generations. If a job fails with
+  `IOPaint server ... didn't respond within 300s`, restart the IOPaint server
+  (`iopaint-venv/bin/iopaint start --model=... --device=mps`) to reset it. Not
+  root-caused further - a fix would likely live upstream in IOPaint/diffusers, not
+  in this app.
+- Previously-reported "Failed to fetch" on upload did not reproduce in a clean run
+  and is presumed fixed (see git history if it recurs).
 
 ## Assumptions to verify
 
@@ -80,5 +85,12 @@ Drop sample cards that already have the correct bleed into `reference-cards/`
 - **"Correct side"**: interpreted as orientation (rotation), not physical sizing. The
   app applies a best-guess rotation heuristic with a manual override.
 - **IOPaint outpainting quality**: `runwayml/stable-diffusion-inpainting` is a
-  reasonable general-purpose default, but hasn't been tuned against real legacy card
-  art - try other IOPaint-supported inpainting models if bleed quality is poor.
+  reasonable general-purpose default. Bleed generation now runs *after* upscaling
+  the trim to full print resolution (not before), giving IOPaint real pixel budget
+  to work with instead of a handful of px that a later upscale would stretch into a
+  flat/blurry band - this measurably improved border/texture continuation quality.
+  Tunable parameters (prompt, negative prompt, mask blur, generation overshoot,
+  steps, guidance scale) live as constants at the top of `backend/app/pipeline/bleed.py`;
+  use `backend/scripts/tune_bleed.py` to compare variants quickly against images in
+  `reference-cards/` without going through the full app. Still worth trying other
+  IOPaint-supported inpainting models if quality is poor on other card styles.

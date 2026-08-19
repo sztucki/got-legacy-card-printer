@@ -74,7 +74,7 @@ function App() {
           <SideBySideViewer
             originalUrl={job.stage_urls.original}
             originalPreviewUrl={originalPreviewUrl}
-            finalUrl={job.stage_urls.upscaled}
+            finalUrl={job.stage_urls.bleed}
           />
         </div>
       )}
