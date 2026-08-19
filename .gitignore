@@ -14,4 +14,7 @@ backend/.env
 # Reference cards (user-provided, not checked in)
 reference-cards/
 
+# Scratch outputs from backend/scripts/tune_bleed.py
+test-outputs/
+
 .DS_Store

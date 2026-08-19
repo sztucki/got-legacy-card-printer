@@ -29,25 +29,19 @@ from app.pipeline.normalize import normalize  # noqa: E402
 from app.pipeline.orient import orient  # noqa: E402
 from app.pipeline.upscale import upscale  # noqa: E402
 
-# Fixed relative to this script (not JOBS_DIR, which resolves against
+# Fixed relative to the repo root (not JOBS_DIR, which resolves against
 # whatever the caller's cwd happens to be) so output always lands in the
-# same, already-gitignored place regardless of where this is run from.
-OUTPUT_DIR = BACKEND_DIR / "jobs" / "_tune"
+# same, gitignored place regardless of where this is run from.
+OUTPUT_DIR = REPO_ROOT / "test-outputs"
 
 # Label -> generate_bleed() keyword overrides, all run against the same
 # upscaled trim image so results are directly comparable. Add/edit entries
 # here to try new parameter combinations.
 VARIANTS = {
     "baseline": {},
-    "stronger_negative": {
-        "negative_prompt": (
-            "blank space, empty area, solid color, plain background, white "
-            "border, blurry, low detail, text, watermark, flat color, "
-            "smooth gradient"
-        )
-    },
-    "more_overshoot": {"generation_overshoot": 2.0},
-    "more_steps": {"sd_steps": 80},
+    "strength_70": {"sd_strength": 0.7},
+    "strength_60": {"sd_strength": 0.6},
+    "strength_50": {"sd_strength": 0.5},
 }
 
 
