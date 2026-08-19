@@ -20,11 +20,14 @@ processed versions side by side. See [PLAN.md](./PLAN.md) for the full design.
 ### IOPaint (bleed outpainting)
 
 Runs as its own local server, separate from this app's backend - start it once and
-leave it running (it keeps the model loaded in memory):
+leave it running (it keeps the model loaded in memory). Install it into its own venv
+(not `backend/venv`) - IOPaint pins older versions of FastAPI/Pillow/etc. that conflict
+with the backend's own requirements:
 
 ```sh
-pip install iopaint
-iopaint start --model=runwayml/stable-diffusion-inpainting --device=mps
+python3 -m venv iopaint-venv
+iopaint-venv/bin/pip install iopaint
+iopaint-venv/bin/iopaint start --model=runwayml/stable-diffusion-inpainting --device=mps
 ```
 
 Use `--device=cuda` on an NVIDIA machine, or omit `--device` for CPU-only (much
@@ -61,14 +64,12 @@ Drop sample cards that already have the correct bleed into `reference-cards/`
 
 ## Known issues (in progress)
 
-- **Frontend "Failed to fetch" on upload**: seen while testing locally with the backend
-  (port 8000), IOPaint (port 8090), and frontend (port 5173) all running. Backend log
-  showed three `POST /api/jobs` requests landing in quick succession right after
-  several `uvicorn --reload` restarts (triggered by live edits to `bleed.py`) -
-  possibly the reloads dropping an in-flight connection, or a leftover multi-submit
-  from before the double-click fix in `App.tsx` took effect via HMR. Not yet
-  root-caused - pick this up next session by reproducing without concurrent backend
-  edits/reloads and checking the browser console for the actual failed request.
+- None currently open. The previously-reported "Failed to fetch" on upload did not
+  reproduce in a clean run (IOPaint, backend, and frontend started fresh, no
+  concurrent `uvicorn --reload` restarts) - a full upload completed end-to-end through
+  the UI without error. It was likely a `uvicorn --reload` artifact from editing
+  `bleed.py` mid-session rather than a standing bug; `App.tsx` already guards against
+  double-submit. Re-open this if it recurs.
 
 ## Assumptions to verify
 
