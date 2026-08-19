@@ -10,12 +10,16 @@ export interface JobState {
 
 export async function createJob(
   file: File,
-  rotateOverride: boolean | null
+  rotateOverride: boolean | null,
+  upscaleModel: string | null
 ): Promise<{ job_id: string }> {
   const formData = new FormData();
   formData.append("file", file);
   if (rotateOverride !== null) {
     formData.append("rotate_override", String(rotateOverride));
+  }
+  if (upscaleModel !== null) {
+    formData.append("upscale_model", upscaleModel);
   }
 
   const response = await fetch(`${API_BASE}/api/jobs`, {
@@ -24,6 +28,14 @@ export async function createJob(
   });
   if (!response.ok) {
     throw new Error(`Failed to create job: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getUpscaleModels(): Promise<{ models: string[] }> {
+  const response = await fetch(`${API_BASE}/api/upscale-models`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch upscale models: ${response.statusText}`);
   }
   return response.json();
 }

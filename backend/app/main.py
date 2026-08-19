@@ -12,6 +12,7 @@ from app import jobs
 from app.config import JOBS_DIR
 from app.jobs import STAGE_FILENAMES
 from app.pipeline.run import run_pipeline
+from app.pipeline.upscale import list_models
 
 app = FastAPI(title="Legacy Card Bleed Printer")
 
@@ -26,18 +27,24 @@ JOBS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/files", StaticFiles(directory=str(JOBS_DIR)), name="files")
 
 
+@app.get("/api/upscale-models")
+async def get_upscale_models():
+    return {"models": list_models()}
+
+
 @app.post("/api/jobs")
 async def create_job(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     rotate_override: Optional[bool] = Form(None),
+    upscale_model: Optional[str] = Form(None),
 ):
     job_id = jobs.create_job()
     original_path = jobs.stage_path(job_id, "original")
     original_path.write_bytes(await file.read())
     jobs.mark_stage_complete(job_id, "original")
 
-    background_tasks.add_task(run_pipeline, job_id, rotate_override)
+    background_tasks.add_task(run_pipeline, job_id, rotate_override, upscale_model)
     return {"job_id": job_id}
 
 

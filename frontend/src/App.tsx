@@ -22,7 +22,11 @@ function App() {
     };
   }, []);
 
-  async function handleUpload(file: File, rotateOverride: boolean | null) {
+  async function handleUpload(
+    file: File,
+    rotateOverride: boolean | null,
+    upscaleModel: string | null
+  ) {
     if (isUploading || isProcessing) return;
 
     setIsUploading(true);
@@ -33,7 +37,7 @@ function App() {
     setOriginalPreviewUrl(previewUrlRef.current);
 
     try {
-      const { job_id } = await createJob(file, rotateOverride);
+      const { job_id } = await createJob(file, rotateOverride, upscaleModel);
       pollJob(job_id);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
