@@ -1,14 +1,14 @@
 import random
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from PIL import Image
 
 from app import jobs
 from app.config import BLEED_SIZE_PX, TRIM_SIZE_PX, UPSCAYL_MODEL_NAME
 from app.jobs import JobStatus
-from app.pipeline.bleed import generate_bleed
+from app.pipeline.bleed import SD_MASK_BLUR, SD_STRENGTH, generate_bleed
 from app.pipeline.clean_text import remove_footer_band
 from app.pipeline.normalize import normalize
 from app.pipeline.orient import orient
@@ -33,44 +33,58 @@ def _clean_footer(
     return cleaned
 
 
-def _record_params(
-    job_id: str,
-    upscale_model: Optional[str],
-    remove_footer_text: bool,
-    footer_height_fraction: float,
-    sd_strength: Optional[float],
-    sd_mask_blur: Optional[int],
-) -> None:
-    jobs.set_params(
-        job_id,
-        {
-            "upscale_model": upscale_model,
-            "remove_footer_text": remove_footer_text,
-            "footer_height_fraction": footer_height_fraction,
-            "sd_strength": sd_strength,
-            "sd_mask_blur": sd_mask_blur,
-        },
-    )
-
-
 def _generate_and_save_bleed(
     job_id: str,
     cleaned: Image.Image,
     sd_strength: Optional[float],
     sd_mask_blur: Optional[int],
     sd_seed: int,
-) -> None:
-    overrides = {"sd_seed": sd_seed}
-    if sd_strength is not None:
-        overrides["sd_strength"] = sd_strength
-    if sd_mask_blur is not None:
-        overrides["sd_mask_blur"] = sd_mask_blur
+) -> Tuple[float, int]:
+    """Generates and saves the bleed stage. Returns the strength/mask_blur
+    actually used (module defaults if the caller didn't override them), so
+    callers can record what was really applied rather than a possibly-None
+    override that only means something in light of generate_bleed()'s
+    current defaults."""
+    resolved_strength = sd_strength if sd_strength is not None else SD_STRENGTH
+    resolved_mask_blur = sd_mask_blur if sd_mask_blur is not None else SD_MASK_BLUR
 
-    bled = generate_bleed(cleaned, **overrides)
+    bled = generate_bleed(cleaned, sd_strength=resolved_strength, sd_mask_blur=resolved_mask_blur, sd_seed=sd_seed)
     if bled.size != BLEED_SIZE_PX:
         bled = bled.resize(BLEED_SIZE_PX, Image.LANCZOS)
     bled.save(jobs.stage_path(job_id, "bleed"))
     jobs.mark_stage_complete(job_id, "bleed")
+    return resolved_strength, resolved_mask_blur
+
+
+def _finish_bleed_generation(
+    job_id: str,
+    cleaned: Image.Image,
+    resolved_upscale_model: Optional[str],
+    remove_footer_text: bool,
+    footer_height_fraction: float,
+    sd_strength: Optional[float],
+    sd_mask_blur: Optional[int],
+    sd_seed: Optional[int],
+) -> None:
+    """Shared tail of run_pipeline and regenerate_bleed_stage once each has
+    its own cleaned image and resolved upscale model ready: generate the
+    bleed, record what was actually used, mark the job complete."""
+    # A blank seed means "random" on both the upload form and the regenerate
+    # panel (they share the same BleedTuningFields component and copy).
+    seed = sd_seed if sd_seed is not None else random.randint(0, 2**31 - 1)
+    resolved_strength, resolved_mask_blur = _generate_and_save_bleed(job_id, cleaned, sd_strength, sd_mask_blur, seed)
+
+    jobs.set_params(
+        job_id,
+        {
+            "upscale_model": resolved_upscale_model,
+            "remove_footer_text": remove_footer_text,
+            "footer_height_fraction": footer_height_fraction,
+            "sd_strength": resolved_strength,
+            "sd_mask_blur": resolved_mask_blur,
+        },
+    )
+    jobs.set_status(job_id, JobStatus.COMPLETE)
 
 
 def run_pipeline(
@@ -112,18 +126,16 @@ def run_pipeline(
 
         cleaned = _clean_footer(job_id, upscaled_path, remove_footer_text, footer_height_fraction)
 
-        # A blank seed means "random" on both the upload form and the
-        # regenerate panel (they share the same BleedTuningFields component
-        # and copy) - resolve it here rather than leaving it to
-        # generate_bleed()'s fixed module default, so that promise holds for
-        # the initial generation too, not just regenerate_bleed_stage.
-        seed = sd_seed if sd_seed is not None else random.randint(0, 2**31 - 1)
-        _generate_and_save_bleed(job_id, cleaned, sd_strength, sd_mask_blur, seed)
-
-        _record_params(
-            job_id, resolved_upscale_model, remove_footer_text, footer_height_fraction, sd_strength, sd_mask_blur
+        _finish_bleed_generation(
+            job_id,
+            cleaned,
+            resolved_upscale_model,
+            remove_footer_text,
+            footer_height_fraction,
+            sd_strength,
+            sd_mask_blur,
+            sd_seed,
         )
-        jobs.set_status(job_id, JobStatus.COMPLETE)
     except Exception as exc:
         jobs.set_status(job_id, JobStatus.FAILED, error=str(exc))
         raise
@@ -166,13 +178,16 @@ def regenerate_bleed_stage(
 
         cleaned = _clean_footer(job_id, upscaled_path, remove_footer_text, footer_height_fraction)
 
-        seed = sd_seed if sd_seed is not None else random.randint(0, 2**31 - 1)
-        _generate_and_save_bleed(job_id, cleaned, sd_strength, sd_mask_blur, seed)
-
-        _record_params(
-            job_id, resolved_upscale_model, remove_footer_text, footer_height_fraction, sd_strength, sd_mask_blur
+        _finish_bleed_generation(
+            job_id,
+            cleaned,
+            resolved_upscale_model,
+            remove_footer_text,
+            footer_height_fraction,
+            sd_strength,
+            sd_mask_blur,
+            sd_seed,
         )
-        jobs.set_status(job_id, JobStatus.COMPLETE)
     except Exception as exc:
         jobs.set_status(job_id, JobStatus.FAILED, error=str(exc))
         raise
