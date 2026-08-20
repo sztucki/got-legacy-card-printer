@@ -15,23 +15,22 @@ from app.pipeline.upscale import upscale
 DEFAULT_FOOTER_HEIGHT_FRACTION = 0.08
 
 
-def _clean_footer(job_id: str, upscaled: Image.Image, remove_footer_text: bool, footer_height_fraction: float) -> None:
-    cleaned_path = jobs.stage_path(job_id, "cleaned")
-    if remove_footer_text:
-        remove_footer_band(upscaled, footer_height_fraction).save(cleaned_path)
-    else:
-        upscaled.save(cleaned_path)
+def _clean_footer(
+    job_id: str, upscaled: Image.Image, remove_footer_text: bool, footer_height_fraction: float
+) -> Image.Image:
+    cleaned = remove_footer_band(upscaled, footer_height_fraction) if remove_footer_text else upscaled
+    cleaned.save(jobs.stage_path(job_id, "cleaned"))
     jobs.mark_stage_complete(job_id, "cleaned")
+    return cleaned
 
 
 def _generate_and_save_bleed(
     job_id: str,
+    cleaned: Image.Image,
     sd_strength: Optional[float],
     sd_mask_blur: Optional[int],
     sd_seed: int,
 ) -> None:
-    cleaned = Image.open(jobs.stage_path(job_id, "cleaned"))
-
     overrides = {"sd_seed": sd_seed}
     if sd_strength is not None:
         overrides["sd_strength"] = sd_strength
@@ -82,7 +81,7 @@ def run_pipeline(
         )
         jobs.mark_stage_complete(job_id, "upscaled")
 
-        _clean_footer(job_id, Image.open(upscaled_path), remove_footer_text, footer_height_fraction)
+        cleaned = _clean_footer(job_id, Image.open(upscaled_path), remove_footer_text, footer_height_fraction)
 
         # A blank seed means "random" on both the upload form and the
         # regenerate panel (they share the same BleedTuningFields component
@@ -90,7 +89,7 @@ def run_pipeline(
         # generate_bleed()'s fixed module default, so that promise holds for
         # the initial generation too, not just regenerate_bleed_stage.
         seed = sd_seed if sd_seed is not None else random.randint(0, 2**31 - 1)
-        _generate_and_save_bleed(job_id, sd_strength, sd_mask_blur, seed)
+        _generate_and_save_bleed(job_id, cleaned, sd_strength, sd_mask_blur, seed)
 
         jobs.set_params(
             job_id,
@@ -124,7 +123,11 @@ def regenerate_bleed_stage(
     upscale params be experimented with interactively against an
     already-uploaded card. Only the bleed params explicitly passed in
     override generate_bleed()'s module defaults; sd_seed=None picks a fresh
-    random seed rather than reusing the original fixed default."""
+    random seed rather than reusing the original fixed default. upscale_model
+    left as None skips re-upscaling (the common, cheap case - re-upscaling is
+    an explicit opt-in since it's much slower than a bleed-only re-roll), and
+    keeps the previously-recorded model in the job's params rather than
+    overwriting it with None."""
     try:
         upscaled_path = jobs.stage_path(job_id, "upscaled")
         if upscale_model is not None:
@@ -135,16 +138,19 @@ def regenerate_bleed_stage(
                 model_name=upscale_model,
             )
             jobs.mark_stage_complete(job_id, "upscaled")
+            resolved_upscale_model = upscale_model
+        else:
+            resolved_upscale_model = jobs.get_state(job_id)["params"].get("upscale_model")
 
-        _clean_footer(job_id, Image.open(upscaled_path), remove_footer_text, footer_height_fraction)
+        cleaned = _clean_footer(job_id, Image.open(upscaled_path), remove_footer_text, footer_height_fraction)
 
         seed = sd_seed if sd_seed is not None else random.randint(0, 2**31 - 1)
-        _generate_and_save_bleed(job_id, sd_strength, sd_mask_blur, seed)
+        _generate_and_save_bleed(job_id, cleaned, sd_strength, sd_mask_blur, seed)
 
         jobs.set_params(
             job_id,
             {
-                "upscale_model": upscale_model,
+                "upscale_model": resolved_upscale_model,
                 "remove_footer_text": remove_footer_text,
                 "footer_height_fraction": footer_height_fraction,
                 "sd_strength": sd_strength,

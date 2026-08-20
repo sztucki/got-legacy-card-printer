@@ -20,7 +20,11 @@ def remove_footer_band(trim_image: Image.Image, height_fraction: float) -> Image
 
     trim_rgb = trim_image.convert("RGB")
     width, height = trim_rgb.size
-    band_top = height - round(height * height_fraction)
+    # Guard against height_fraction rounding down to a 0px band on a small
+    # enough image/fraction combination (e.g. height=200, fraction=0.002) -
+    # getcolors()/max() below need at least one row to work with.
+    band_height = max(1, round(height * height_fraction))
+    band_top = height - band_height
 
     band = trim_rgb.crop((0, band_top, width, height))
     dominant_color = max(band.getcolors(maxcolors=band.width * band.height), key=lambda c: c[0])[1]

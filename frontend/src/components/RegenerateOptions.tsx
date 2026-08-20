@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getUpscaleModels } from "../api";
 import type { JobParams, RegenerateBleedOptions } from "../api";
 import { BleedTuningFields } from "./BleedTuningFields";
+import { DEFAULT_FOOTER_HEIGHT_PERCENT, DEFAULT_MASK_BLUR, DEFAULT_STRENGTH } from "../bleedDefaults";
 
 interface RegenerateOptionsProps {
   onRegenerate: (options: RegenerateBleedOptions) => void;
@@ -15,10 +16,6 @@ interface RegenerateOptionsProps {
   jobParams: Partial<JobParams>;
 }
 
-const DEFAULT_STRENGTH = 0.85;
-const DEFAULT_MASK_BLUR = 12;
-const DEFAULT_FOOTER_HEIGHT_PERCENT = 8;
-
 export function RegenerateOptions({ onRegenerate, disabled, jobParams }: RegenerateOptionsProps) {
   const [expanded, setExpanded] = useState(false);
   const [sdStrength, setSdStrength] = useState(jobParams.sd_strength ?? DEFAULT_STRENGTH);
@@ -29,7 +26,10 @@ export function RegenerateOptions({ onRegenerate, disabled, jobParams }: Regener
     (jobParams.footer_height_fraction ?? DEFAULT_FOOTER_HEIGHT_PERCENT / 100) * 100
   );
   const [models, setModels] = useState<string[]>([]);
-  const [upscaleModel, setUpscaleModel] = useState<string>(jobParams.upscale_model ?? "");
+  // Deliberately not seeded from jobParams.upscale_model - re-upscaling is an
+  // explicit, opt-in action (it's slower than a bleed-only re-roll), so this
+  // stays "" ("keep as-is") until the user actually picks a model.
+  const [upscaleModel, setUpscaleModel] = useState<string>("");
 
   useEffect(() => {
     getUpscaleModels()
@@ -74,7 +74,9 @@ export function RegenerateOptions({ onRegenerate, disabled, jobParams }: Regener
               disabled={disabled || models.length === 0}
               onChange={(event) => setUpscaleModel(event.target.value)}
             >
-              <option value="">(keep as-is)</option>
+              <option value="">
+                (keep as-is{jobParams.upscale_model ? ` - ${jobParams.upscale_model}` : ""})
+              </option>
               {models.map((model) => (
                 <option key={model} value={model}>
                   {model}

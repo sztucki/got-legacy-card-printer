@@ -2,15 +2,12 @@ import { useEffect, useState } from "react";
 import { getUpscaleModels } from "../api";
 import type { CreateJobOptions } from "../api";
 import { BleedTuningFields } from "./BleedTuningFields";
+import { DEFAULT_FOOTER_HEIGHT_PERCENT, DEFAULT_MASK_BLUR, DEFAULT_STRENGTH } from "../bleedDefaults";
 
 interface UploadFormProps {
   onUpload: (file: File, options: CreateJobOptions) => void;
   disabled: boolean;
 }
-
-const DEFAULT_STRENGTH = 0.85;
-const DEFAULT_MASK_BLUR = 12;
-const DEFAULT_FOOTER_HEIGHT_PERCENT = 8;
 
 export function UploadForm({ onUpload, disabled }: UploadFormProps) {
   const [file, setFile] = useState<File | null>(null);
