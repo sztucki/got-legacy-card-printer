@@ -24,6 +24,26 @@ def _clean_footer(
     return cleaned
 
 
+def _record_params(
+    job_id: str,
+    upscale_model: Optional[str],
+    remove_footer_text: bool,
+    footer_height_fraction: float,
+    sd_strength: Optional[float],
+    sd_mask_blur: Optional[int],
+) -> None:
+    jobs.set_params(
+        job_id,
+        {
+            "upscale_model": upscale_model,
+            "remove_footer_text": remove_footer_text,
+            "footer_height_fraction": footer_height_fraction,
+            "sd_strength": sd_strength,
+            "sd_mask_blur": sd_mask_blur,
+        },
+    )
+
+
 def _generate_and_save_bleed(
     job_id: str,
     cleaned: Image.Image,
@@ -91,15 +111,8 @@ def run_pipeline(
         seed = sd_seed if sd_seed is not None else random.randint(0, 2**31 - 1)
         _generate_and_save_bleed(job_id, cleaned, sd_strength, sd_mask_blur, seed)
 
-        jobs.set_params(
-            job_id,
-            {
-                "upscale_model": resolved_upscale_model,
-                "remove_footer_text": remove_footer_text,
-                "footer_height_fraction": footer_height_fraction,
-                "sd_strength": sd_strength,
-                "sd_mask_blur": sd_mask_blur,
-            },
+        _record_params(
+            job_id, resolved_upscale_model, remove_footer_text, footer_height_fraction, sd_strength, sd_mask_blur
         )
         jobs.set_status(job_id, JobStatus.COMPLETE)
     except Exception as exc:
@@ -147,15 +160,8 @@ def regenerate_bleed_stage(
         seed = sd_seed if sd_seed is not None else random.randint(0, 2**31 - 1)
         _generate_and_save_bleed(job_id, cleaned, sd_strength, sd_mask_blur, seed)
 
-        jobs.set_params(
-            job_id,
-            {
-                "upscale_model": resolved_upscale_model,
-                "remove_footer_text": remove_footer_text,
-                "footer_height_fraction": footer_height_fraction,
-                "sd_strength": sd_strength,
-                "sd_mask_blur": sd_mask_blur,
-            },
+        _record_params(
+            job_id, resolved_upscale_model, remove_footer_text, footer_height_fraction, sd_strength, sd_mask_blur
         )
         jobs.set_status(job_id, JobStatus.COMPLETE)
     except Exception as exc:
