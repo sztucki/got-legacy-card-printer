@@ -8,13 +8,44 @@ from PIL import Image
 from app.config import BLEED_MARGIN_MM, IOPAINT_API_URL, TRIM_SIZE_MM
 
 PROMPT = (
-    "Extend this trading card's existing artwork and border outward to fill "
-    "the new margin, matching the existing art style, colors, and linework. "
-    "Do not add any new text, symbols, or elements - purely continue what "
-    "is already there."
+    "Extend this trading card's existing artwork, border, and frame pattern "
+    "outward to fill the new margin, continuing the same texture, colors, "
+    "and linework as if the art originally extended this far - especially "
+    "any border/frame decoration, not just the background. Do not add any "
+    "new text, symbols, or objects - purely continue what is already there."
+)
+NEGATIVE_PROMPT = (
+    "blank space, empty area, solid color, plain background, white border, "
+    "blurry, low detail, text, watermark"
 )
 
 REQUEST_TIMEOUT_SECONDS = 300
+
+# How far past the actual bleed margin to generate before cropping back down
+# to it - gives the diffusion model room to work with so the kept edge isn't
+# the noisy outer boundary of its own generation.
+GENERATION_OVERSHOOT = 1.5
+
+SD_STEPS = 50
+SD_GUIDANCE_SCALE = 7.5
+# Blend width (px) at the seam between original and generated pixels - kept
+# as an explicit constant (independent of IOPaint's own default) so it stays
+# sensible as the margin size changes.
+SD_MASK_BLUR = 12
+# How closely the generated margin should stick to the replicated source
+# pixels vs. fully hallucinate new content (1.0 = ignore them entirely).
+# IOPaint's built-in use_extender mode hard-codes this to 1.0, which was
+# producing wild, unrelated content (jagged/green noise) over plain regions
+# like a card's solid-color footer bar - building the padded canvas and mask
+# ourselves (below) lets us set this lower instead.
+SD_STRENGTH = 0.85
+# IOPaint defaults to seed 42 when none is given. That happened to produce a
+# visible seam artifact in the leather-texture border on one test card - a
+# diffusion model's output is seed-sensitive, and 42 wasn't a good roll for
+# that specific input. 123 tested clean on the same case; not a permanent
+# fix (still just one fixed seed, so another input could hit a bad roll of
+# its own) but a better default for now.
+SD_SEED = 123
 
 # Stable Diffusion on Apple's MPS backend cannot safely run two overlapping
 # generations - concurrent requests have been observed to crash the IOPaint
@@ -33,11 +64,62 @@ def _to_base64_png(image: Image.Image) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def generate_bleed(trim_image: Image.Image) -> Image.Image:
+def _replicate_pad(image: Image.Image, margin: int) -> Image.Image:
+    """Pad image on all sides by margin px, replicating edge pixels (like
+    cv2.BORDER_REPLICATE) - gives the model a same-color starting point to
+    denoise from rather than an arbitrary fill. Pure PIL, no numpy: a 1px
+    edge strip resized with NEAREST to the margin's thickness repeats each
+    edge pixel exactly, which is what edge-replication is."""
+    width, height = image.size
+    padded = Image.new("RGB", (width + 2 * margin, height + 2 * margin))
+    padded.paste(image, (margin, margin))
+
+    top = image.crop((0, 0, width, 1)).resize((width, margin), Image.NEAREST)
+    bottom = image.crop((0, height - 1, width, height)).resize((width, margin), Image.NEAREST)
+    left = image.crop((0, 0, 1, height)).resize((margin, height), Image.NEAREST)
+    right = image.crop((width - 1, 0, width, height)).resize((margin, height), Image.NEAREST)
+    padded.paste(top, (margin, 0))
+    padded.paste(bottom, (margin, margin + height))
+    padded.paste(left, (0, margin))
+    padded.paste(right, (margin + width, margin))
+
+    tl = image.crop((0, 0, 1, 1)).resize((margin, margin), Image.NEAREST)
+    tr = image.crop((width - 1, 0, width, 1)).resize((margin, margin), Image.NEAREST)
+    bl = image.crop((0, height - 1, 1, height)).resize((margin, margin), Image.NEAREST)
+    br = image.crop((width - 1, height - 1, width, height)).resize((margin, margin), Image.NEAREST)
+    padded.paste(tl, (0, 0))
+    padded.paste(tr, (margin + width, 0))
+    padded.paste(bl, (0, margin + height))
+    padded.paste(br, (margin + width, margin + height))
+
+    return padded
+
+
+def generate_bleed(
+    trim_image: Image.Image,
+    *,
+    prompt: str = PROMPT,
+    negative_prompt: str = NEGATIVE_PROMPT,
+    sd_steps: int = SD_STEPS,
+    sd_guidance_scale: float = SD_GUIDANCE_SCALE,
+    sd_mask_blur: int = SD_MASK_BLUR,
+    sd_strength: float = SD_STRENGTH,
+    sd_seed: int = SD_SEED,
+    generation_overshoot: float = GENERATION_OVERSHOOT,
+) -> Image.Image:
     """Outpaint a bleed margin around the trim image using a local IOPaint
-    server (a Stable Diffusion inpainting model with built-in outpainting/
-    'extender' support: given the original image and how far to extend on
-    each side, IOPaint builds the expanded canvas and mask itself).
+    server (a Stable Diffusion inpainting model).
+
+    Builds the expanded canvas and mask ourselves (edge-replicate padding +
+    a mask covering just the new margin) and calls IOPaint's plain inpaint
+    endpoint, rather than its use_extender mode - that mode hard-codes
+    sd_strength=1.0 (full regeneration from noise, no anchor to the source
+    pixels), which produced wild, unrelated content over plain regions like
+    a card's solid-color footer bar. Doing it ourselves lets sd_strength
+    stay tunable.
+
+    Keyword args override the module-level defaults above without editing
+    this file - used by backend/scripts/tune_bleed.py to compare variants.
 
     Requires a local IOPaint server already running, e.g.:
       iopaint start --model=runwayml/stable-diffusion-inpainting --device=mps
@@ -51,21 +133,23 @@ def generate_bleed(trim_image: Image.Image) -> Image.Image:
     # applies cleanly to this image's actual pixel width.
     margin_fraction = BLEED_MARGIN_MM / TRIM_SIZE_MM[0]
     margin = max(1, round(width * margin_fraction))
+    generation_margin = max(margin, round(margin * generation_overshoot))
 
-    # IOPaint's API requires a mask matching the input image's size, but it's
-    # unused when use_extender=True (the server builds its own expansion
-    # mask internally) - any correctly-sized placeholder works.
-    dummy_mask = Image.new("L", (width, height), 0)
+    padded = _replicate_pad(trim_rgb, generation_margin)
+    mask = Image.new("L", padded.size, 255)
+    mask.paste(Image.new("L", (width, height), 0), (generation_margin, generation_margin))
 
     payload = {
-        "image": _to_base64_png(trim_rgb),
-        "mask": _to_base64_png(dummy_mask),
-        "prompt": PROMPT,
-        "use_extender": True,
-        "extender_x": -margin,
-        "extender_y": -margin,
-        "extender_width": width + 2 * margin,
-        "extender_height": height + 2 * margin,
+        "image": _to_base64_png(padded),
+        "mask": _to_base64_png(mask),
+        "prompt": prompt,
+        "negative_prompt": negative_prompt,
+        "sd_steps": sd_steps,
+        "sd_guidance_scale": sd_guidance_scale,
+        "sd_mask_blur": sd_mask_blur,
+        "sd_strength": sd_strength,
+        "sd_seed": sd_seed,
+        "sd_keep_unmasked_area": True,
     }
 
     try:
@@ -95,4 +179,22 @@ def generate_bleed(trim_image: Image.Image) -> Image.Image:
             f"IOPaint request failed ({response.status_code}): {response.text}"
         )
 
-    return Image.open(io.BytesIO(response.content)).convert("RGB")
+    generated = Image.open(io.BytesIO(response.content)).convert("RGB")
+    if generated.size != padded.size:
+        # IOPaint can internally resize to satisfy the model's own dimension
+        # constraints (e.g. rounding to a multiple of 8) before returning the
+        # result - resize back to what we sent so crop_box (computed from the
+        # pre-generation geometry) lines up with the actual image.
+        generated = generated.resize(padded.size, Image.LANCZOS)
+
+    # Crop back down from the overshoot margin to the actual bleed margin,
+    # keeping the clean center of the generation and discarding its noisier
+    # outer edge.
+    trim_offset = generation_margin - margin
+    crop_box = (
+        trim_offset,
+        trim_offset,
+        trim_offset + width + 2 * margin,
+        trim_offset + height + 2 * margin,
+    )
+    return generated.crop(crop_box)

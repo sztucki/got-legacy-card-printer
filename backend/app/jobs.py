@@ -1,4 +1,6 @@
 import json
+import os
+import threading
 import uuid
 from enum import Enum
 from pathlib import Path
@@ -7,6 +9,16 @@ from typing import Optional
 from app.config import JOBS_DIR
 
 STATE_FILENAME = "state.json"
+
+# Guards the check-then-act sequence in try_start_processing() so two
+# concurrent requests against the same job (e.g. a fast double-click on
+# "Regenerate bleed") can't both pass the status check and both schedule a
+# generation against the same stage files. Deliberately one lock for all
+# jobs, not one per job_id - the critical section is a tiny JSON read/write,
+# and this app is single-user/local, so serializing unrelated jobs' status
+# transitions against each other isn't worth the complexity (and cleanup) of
+# a per-job lock registry.
+_status_lock = threading.Lock()
 
 
 class JobStatus(str, Enum):
@@ -20,16 +32,31 @@ STAGE_FILENAMES = {
     "original": "00-original.png",
     "oriented": "01-oriented.png",
     "normalized": "02-normalized.png",
-    "bleed": "03-bleed.png",
-    "upscaled": "04-upscaled.png",
+    "upscaled": "03-upscaled.png",
+    "cleaned": "04-cleaned.png",
+    "bleed": "05-bleed.png",
 }
 
 
 def create_job() -> str:
     job_id = uuid.uuid4().hex
     job_dir(job_id).mkdir(parents=True, exist_ok=True)
-    _write_state(job_id, {"status": JobStatus.PENDING.value, "stages": {}, "error": None})
+    _write_state(
+        job_id,
+        {"status": JobStatus.PENDING.value, "stages": {}, "error": None, "params": {}},
+    )
     return job_id
+
+
+def set_params(job_id: str, params: dict) -> None:
+    """Record the settings (footer removal, upscale model, bleed strength/etc.)
+    a job was last generated with, so the frontend's regenerate panel can
+    default to "whatever this job was actually generated with" rather than
+    hardcoded constants that might silently override the user's original
+    choices (e.g. footer-text removal) on a bare re-roll."""
+    state = get_state(job_id)
+    state["params"] = params
+    _write_state(job_id, state)
 
 
 def job_dir(job_id: str) -> Path:
@@ -47,6 +74,26 @@ def set_status(job_id: str, status: JobStatus, error: Optional[str] = None) -> N
     _write_state(job_id, state)
 
 
+def try_start_processing(job_id: str, required_stage: Optional[str] = None) -> Optional[str]:
+    """Atomically check the job isn't already processing (and, if given,
+    that required_stage is complete) and transition it to PROCESSING.
+
+    Returns None on success. Otherwise returns a reason ("processing" or
+    "not_ready") without changing anything, so a caller with two concurrent
+    requests for the same job can't have both pass the check and both start
+    a generation against the same stage files."""
+    with _status_lock:
+        state = get_state(job_id)
+        if state["status"] == JobStatus.PROCESSING.value:
+            return "processing"
+        if required_stage and not state["stages"].get(required_stage):
+            return "not_ready"
+        state["status"] = JobStatus.PROCESSING.value
+        state["error"] = None
+        _write_state(job_id, state)
+        return None
+
+
 def mark_stage_complete(job_id: str, stage: str) -> None:
     state = get_state(job_id)
     state["stages"][stage] = True
@@ -62,4 +109,11 @@ def get_state(job_id: str) -> dict:
 
 def _write_state(job_id: str, state: dict) -> None:
     path = job_dir(job_id) / STATE_FILENAME
-    path.write_text(json.dumps(state))
+    # Write to a temp file and rename over the target rather than writing
+    # the target directly - os.replace() is atomic, so a concurrent
+    # get_state() (background generation threads and the polling API
+    # endpoint share the same process) always sees either the old or the
+    # new complete file, never a partial write mid-json.dumps().
+    tmp_path = path.with_suffix(f"{path.suffix}.tmp-{uuid.uuid4().hex}")
+    tmp_path.write_text(json.dumps(state))
+    os.replace(tmp_path, path)
