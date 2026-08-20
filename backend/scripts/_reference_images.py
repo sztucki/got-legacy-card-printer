@@ -1,7 +1,24 @@
-"""Shared helper for the standalone dev scripts in this directory."""
+"""Shared helpers for the standalone dev scripts in this directory."""
 
+import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
+
+
+def setup_script_env(script_file: str) -> Tuple[Path, Path]:
+    """Common bootstrap for these scripts: puts backend/ on sys.path (for
+    `app.*` imports) and loads backend/.env. Call this before importing
+    anything from `app`. Returns (backend_dir, repo_root)."""
+    scripts_dir = Path(script_file).resolve().parent
+    backend_dir = scripts_dir.parent
+    repo_root = backend_dir.parent
+    sys.path.insert(0, str(backend_dir))
+
+    from dotenv import load_dotenv
+
+    load_dotenv(backend_dir / ".env")
+
+    return backend_dir, repo_root
 
 
 def discover_reference_images(repo_root: Path, args: List[str]) -> Optional[List[Path]]:

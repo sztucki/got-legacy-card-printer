@@ -13,16 +13,10 @@ variants can be compared side by side. Requires a running IOPaint server
 import sys
 from pathlib import Path
 
-BACKEND_DIR = Path(__file__).resolve().parents[1]
-REPO_ROOT = BACKEND_DIR.parent
-SCRIPTS_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(BACKEND_DIR))
-sys.path.insert(0, str(SCRIPTS_DIR))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _reference_images import discover_reference_images, setup_script_env  # noqa: E402
 
-from _reference_images import discover_reference_images  # noqa: E402
-from dotenv import load_dotenv  # noqa: E402
-
-load_dotenv(BACKEND_DIR / ".env")
+_, REPO_ROOT = setup_script_env(__file__)
 
 from PIL import Image  # noqa: E402
 
