@@ -15,8 +15,11 @@ from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_DIR.parent
+SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BACKEND_DIR))
+sys.path.insert(0, str(SCRIPTS_DIR))
 
+from _reference_images import discover_reference_images  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(BACKEND_DIR / ".env")
@@ -65,16 +68,9 @@ def compare_one(image_path: Path) -> None:
 
 
 def main() -> None:
-    args = sys.argv[1:]
-    if args:
-        images = [Path(a) for a in args]
-    else:
-        images = sorted(REPO_ROOT.glob("reference-cards/**/*.tif")) + sorted(
-            REPO_ROOT.glob("reference-cards/**/*.jpg")
-        )
-        if not images:
-            print("No images found under reference-cards/ - pass image paths explicitly.")
-            return
+    images = discover_reference_images(REPO_ROOT, sys.argv[1:])
+    if images is None:
+        return
 
     for image_path in images:
         compare_one(image_path)

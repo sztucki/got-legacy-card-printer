@@ -102,7 +102,12 @@ function App() {
           />
           {job.stage_urls.bleed && (
             <div>
-              <RegenerateOptions onRegenerate={handleRegenerate} disabled={isProcessing} />
+              <RegenerateOptions
+                key={job.job_id}
+                onRegenerate={handleRegenerate}
+                disabled={isProcessing}
+                jobParams={job.params}
+              />
               {regenerateError && (
                 <p style={{ color: "red" }}>{regenerateError}</p>
               )}

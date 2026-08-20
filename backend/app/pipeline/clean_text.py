@@ -13,6 +13,11 @@ def remove_footer_band(trim_image: Image.Image, height_fraction: float) -> Image
     pixels, the mode reliably approximates the true background color without
     any manual color picking or AI call.
     """
+    if not 0 < height_fraction <= 1:
+        raise ValueError(
+            f"footer_height_fraction must be greater than 0 and at most 1, got {height_fraction}"
+        )
+
     trim_rgb = trim_image.convert("RGB")
     width, height = trim_rgb.size
     band_top = height - round(height * height_fraction)

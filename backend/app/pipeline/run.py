@@ -28,17 +28,15 @@ def _generate_and_save_bleed(
     job_id: str,
     sd_strength: Optional[float],
     sd_mask_blur: Optional[int],
-    sd_seed: Optional[int],
+    sd_seed: int,
 ) -> None:
     cleaned = Image.open(jobs.stage_path(job_id, "cleaned"))
 
-    overrides = {}
+    overrides = {"sd_seed": sd_seed}
     if sd_strength is not None:
         overrides["sd_strength"] = sd_strength
     if sd_mask_blur is not None:
         overrides["sd_mask_blur"] = sd_mask_blur
-    if sd_seed is not None:
-        overrides["sd_seed"] = sd_seed
 
     bled = generate_bleed(cleaned, **overrides)
     if bled.size != BLEED_SIZE_PX:
@@ -74,18 +72,36 @@ def run_pipeline(
         # the bleed margin, so IOPaint has real pixel budget to generate into
         # instead of a handful of px that a later upscale would just stretch
         # into a flat/blurry band.
+        resolved_upscale_model = upscale_model or UPSCAYL_MODEL_NAME
         upscaled_path = jobs.stage_path(job_id, "upscaled")
         upscale(
             jobs.stage_path(job_id, "normalized"),
             upscaled_path,
             resize_to=TRIM_SIZE_PX,
-            model_name=upscale_model or UPSCAYL_MODEL_NAME,
+            model_name=resolved_upscale_model,
         )
         jobs.mark_stage_complete(job_id, "upscaled")
 
         _clean_footer(job_id, Image.open(upscaled_path), remove_footer_text, footer_height_fraction)
-        _generate_and_save_bleed(job_id, sd_strength, sd_mask_blur, sd_seed)
 
+        # A blank seed means "random" on both the upload form and the
+        # regenerate panel (they share the same BleedTuningFields component
+        # and copy) - resolve it here rather than leaving it to
+        # generate_bleed()'s fixed module default, so that promise holds for
+        # the initial generation too, not just regenerate_bleed_stage.
+        seed = sd_seed if sd_seed is not None else random.randint(0, 2**31 - 1)
+        _generate_and_save_bleed(job_id, sd_strength, sd_mask_blur, seed)
+
+        jobs.set_params(
+            job_id,
+            {
+                "upscale_model": resolved_upscale_model,
+                "remove_footer_text": remove_footer_text,
+                "footer_height_fraction": footer_height_fraction,
+                "sd_strength": sd_strength,
+                "sd_mask_blur": sd_mask_blur,
+            },
+        )
         jobs.set_status(job_id, JobStatus.COMPLETE)
     except Exception as exc:
         jobs.set_status(job_id, JobStatus.FAILED, error=str(exc))
@@ -110,8 +126,6 @@ def regenerate_bleed_stage(
     override generate_bleed()'s module defaults; sd_seed=None picks a fresh
     random seed rather than reusing the original fixed default."""
     try:
-        jobs.set_status(job_id, JobStatus.PROCESSING)
-
         upscaled_path = jobs.stage_path(job_id, "upscaled")
         if upscale_model is not None:
             upscale(
@@ -127,6 +141,16 @@ def regenerate_bleed_stage(
         seed = sd_seed if sd_seed is not None else random.randint(0, 2**31 - 1)
         _generate_and_save_bleed(job_id, sd_strength, sd_mask_blur, seed)
 
+        jobs.set_params(
+            job_id,
+            {
+                "upscale_model": upscale_model,
+                "remove_footer_text": remove_footer_text,
+                "footer_height_fraction": footer_height_fraction,
+                "sd_strength": sd_strength,
+                "sd_mask_blur": sd_mask_blur,
+            },
+        )
         jobs.set_status(job_id, JobStatus.COMPLETE)
     except Exception as exc:
         jobs.set_status(job_id, JobStatus.FAILED, error=str(exc))

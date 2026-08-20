@@ -180,6 +180,12 @@ def generate_bleed(
         )
 
     generated = Image.open(io.BytesIO(response.content)).convert("RGB")
+    if generated.size != padded.size:
+        # IOPaint can internally resize to satisfy the model's own dimension
+        # constraints (e.g. rounding to a multiple of 8) before returning the
+        # result - resize back to what we sent so crop_box (computed from the
+        # pre-generation geometry) lines up with the actual image.
+        generated = generated.resize(padded.size, Image.LANCZOS)
 
     # Crop back down from the overshoot margin to the actual bleed margin,
     # keeping the clean center of the generation and discarding its noisier

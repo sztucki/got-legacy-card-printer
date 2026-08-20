@@ -1,26 +1,35 @@
 import { useEffect, useState } from "react";
 import { getUpscaleModels } from "../api";
-import type { RegenerateBleedOptions } from "../api";
+import type { JobParams, RegenerateBleedOptions } from "../api";
 import { BleedTuningFields } from "./BleedTuningFields";
 
 interface RegenerateOptionsProps {
   onRegenerate: (options: RegenerateBleedOptions) => void;
   disabled: boolean;
+  // The job's own last-used settings, so a bare "Regenerate bleed" click
+  // (without opening "Options…") reuses what this card actually ran with -
+  // e.g. doesn't silently re-enable footer-text removal if the user
+  // explicitly turned it off at upload time. Render this component with
+  // `key={job.job_id}` so it re-seeds fresh per job rather than carrying
+  // stale state across uploads.
+  jobParams: Partial<JobParams>;
 }
 
 const DEFAULT_STRENGTH = 0.85;
 const DEFAULT_MASK_BLUR = 12;
 const DEFAULT_FOOTER_HEIGHT_PERCENT = 8;
 
-export function RegenerateOptions({ onRegenerate, disabled }: RegenerateOptionsProps) {
+export function RegenerateOptions({ onRegenerate, disabled, jobParams }: RegenerateOptionsProps) {
   const [expanded, setExpanded] = useState(false);
-  const [sdStrength, setSdStrength] = useState(DEFAULT_STRENGTH);
-  const [sdMaskBlur, setSdMaskBlur] = useState(DEFAULT_MASK_BLUR);
+  const [sdStrength, setSdStrength] = useState(jobParams.sd_strength ?? DEFAULT_STRENGTH);
+  const [sdMaskBlur, setSdMaskBlur] = useState(jobParams.sd_mask_blur ?? DEFAULT_MASK_BLUR);
   const [seedText, setSeedText] = useState("");
-  const [removeFooterText, setRemoveFooterText] = useState(true);
-  const [footerHeightPercent, setFooterHeightPercent] = useState(DEFAULT_FOOTER_HEIGHT_PERCENT);
+  const [removeFooterText, setRemoveFooterText] = useState(jobParams.remove_footer_text ?? true);
+  const [footerHeightPercent, setFooterHeightPercent] = useState(
+    (jobParams.footer_height_fraction ?? DEFAULT_FOOTER_HEIGHT_PERCENT / 100) * 100
+  );
   const [models, setModels] = useState<string[]>([]);
-  const [upscaleModel, setUpscaleModel] = useState<string>("");
+  const [upscaleModel, setUpscaleModel] = useState<string>(jobParams.upscale_model ?? "");
 
   useEffect(() => {
     getUpscaleModels()

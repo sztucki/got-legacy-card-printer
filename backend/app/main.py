@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from app import jobs
 from app.config import JOBS_DIR
-from app.jobs import JobStatus, STAGE_FILENAMES
+from app.jobs import STAGE_FILENAMES
 from app.pipeline.run import DEFAULT_FOOTER_HEIGHT_FRACTION, regenerate_bleed_stage, run_pipeline
 from app.pipeline.upscale import list_models
 
@@ -84,7 +84,10 @@ async def get_job(job_id: str):
         stage: f"/files/{job_id}/{STAGE_FILENAMES[stage]}"
         for stage in state["stages"]
     }
-    return {**state, "job_id": job_id, "stage_urls": stage_urls}
+    # Jobs created before "params" was tracked (or before their first
+    # regenerate) won't have the key at all - default it so the frontend can
+    # always rely on job.params being present.
+    return {**state, "job_id": job_id, "stage_urls": stage_urls, "params": state.get("params", {})}
 
 
 @app.post("/api/jobs/{job_id}/regenerate-bleed")
@@ -94,19 +97,18 @@ async def regenerate_bleed(
     options: RegenerateBleedRequest = RegenerateBleedRequest(),
 ):
     try:
-        state = jobs.get_state(job_id)
+        refusal = jobs.try_start_processing(job_id, required_stage="upscaled")
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    if state["status"] == JobStatus.PROCESSING.value:
+    if refusal == "processing":
         raise HTTPException(status_code=409, detail="Job is still processing")
-    if not state["stages"].get("upscaled"):
+    if refusal == "not_ready":
         raise HTTPException(
             status_code=400,
             detail="Job hasn't reached the bleed-generation stage yet",
         )
 
-    jobs.set_status(job_id, JobStatus.PROCESSING)
     background_tasks.add_task(
         regenerate_bleed_stage,
         job_id,

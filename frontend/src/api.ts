@@ -1,11 +1,20 @@
 const API_BASE = "http://localhost:8000";
 
+export interface JobParams {
+  upscale_model: string | null;
+  remove_footer_text: boolean;
+  footer_height_fraction: number;
+  sd_strength: number | null;
+  sd_mask_blur: number | null;
+}
+
 export interface JobState {
   job_id: string;
   status: "pending" | "processing" | "complete" | "failed";
   error: string | null;
   stages: Record<string, boolean>;
   stage_urls: Record<string, string>;
+  params: Partial<JobParams>;
 }
 
 export interface FooterTextOptions {
