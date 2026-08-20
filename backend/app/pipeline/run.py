@@ -1,4 +1,6 @@
 import random
+import shutil
+from pathlib import Path
 from typing import Optional
 
 from PIL import Image
@@ -16,10 +18,17 @@ DEFAULT_FOOTER_HEIGHT_FRACTION = 0.08
 
 
 def _clean_footer(
-    job_id: str, upscaled: Image.Image, remove_footer_text: bool, footer_height_fraction: float
+    job_id: str, upscaled_path: Path, remove_footer_text: bool, footer_height_fraction: float
 ) -> Image.Image:
-    cleaned = remove_footer_band(upscaled, footer_height_fraction) if remove_footer_text else upscaled
-    cleaned.save(jobs.stage_path(job_id, "cleaned"))
+    cleaned_path = jobs.stage_path(job_id, "cleaned")
+    if remove_footer_text:
+        cleaned = remove_footer_band(Image.open(upscaled_path), footer_height_fraction)
+        cleaned.save(cleaned_path)
+    else:
+        # Nothing to change - copy the file rather than decode+re-encode a
+        # duplicate PNG of identical pixel data.
+        shutil.copyfile(upscaled_path, cleaned_path)
+        cleaned = Image.open(cleaned_path)
     jobs.mark_stage_complete(job_id, "cleaned")
     return cleaned
 
@@ -101,7 +110,7 @@ def run_pipeline(
         )
         jobs.mark_stage_complete(job_id, "upscaled")
 
-        cleaned = _clean_footer(job_id, Image.open(upscaled_path), remove_footer_text, footer_height_fraction)
+        cleaned = _clean_footer(job_id, upscaled_path, remove_footer_text, footer_height_fraction)
 
         # A blank seed means "random" on both the upload form and the
         # regenerate panel (they share the same BleedTuningFields component
@@ -155,7 +164,7 @@ def regenerate_bleed_stage(
         else:
             resolved_upscale_model = jobs.get_state(job_id).get("params", {}).get("upscale_model")
 
-        cleaned = _clean_footer(job_id, Image.open(upscaled_path), remove_footer_text, footer_height_fraction)
+        cleaned = _clean_footer(job_id, upscaled_path, remove_footer_text, footer_height_fraction)
 
         seed = sd_seed if sd_seed is not None else random.randint(0, 2**31 - 1)
         _generate_and_save_bleed(job_id, cleaned, sd_strength, sd_mask_blur, seed)

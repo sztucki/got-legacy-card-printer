@@ -12,7 +12,11 @@ STATE_FILENAME = "state.json"
 # Guards the check-then-act sequence in try_start_processing() so two
 # concurrent requests against the same job (e.g. a fast double-click on
 # "Regenerate bleed") can't both pass the status check and both schedule a
-# generation against the same stage files.
+# generation against the same stage files. Deliberately one lock for all
+# jobs, not one per job_id - the critical section is a tiny JSON read/write,
+# and this app is single-user/local, so serializing unrelated jobs' status
+# transitions against each other isn't worth the complexity (and cleanup) of
+# a per-job lock registry.
 _status_lock = threading.Lock()
 
 
