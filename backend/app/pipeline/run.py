@@ -140,7 +140,7 @@ def regenerate_bleed_stage(
             jobs.mark_stage_complete(job_id, "upscaled")
             resolved_upscale_model = upscale_model
         else:
-            resolved_upscale_model = jobs.get_state(job_id)["params"].get("upscale_model")
+            resolved_upscale_model = jobs.get_state(job_id).get("params", {}).get("upscale_model")
 
         cleaned = _clean_footer(job_id, Image.open(upscaled_path), remove_footer_text, footer_height_fraction)
 

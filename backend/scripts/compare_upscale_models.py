@@ -29,19 +29,9 @@ from PIL import Image  # noqa: E402
 from app.config import TRIM_SIZE_PX  # noqa: E402
 from app.pipeline.normalize import normalize  # noqa: E402
 from app.pipeline.orient import orient  # noqa: E402
-from app.pipeline.upscale import upscale  # noqa: E402
+from app.pipeline.upscale import list_models, upscale  # noqa: E402
 
 OUTPUT_DIR = REPO_ROOT / "test-outputs" / "upscale-models"
-
-# upscayl-standard-4x is the project's current default - kept first as the
-# baseline to compare the others against.
-MODELS = [
-    "upscayl-standard-4x",
-    "high-fidelity-4x",
-    "ultramix-balanced-4x",
-    "remacri-4x",
-    "ultrasharp-4x",
-]
 
 
 def compare_one(image_path: Path) -> None:
@@ -55,7 +45,12 @@ def compare_one(image_path: Path) -> None:
     normalized_path = out_dir / "_normalized.png"
     normalized.save(normalized_path)
 
-    for model_name in MODELS:
+    # Same models the frontend's picker offers (list_models() sorts the
+    # configured default first) - stays in sync automatically if
+    # UPSCAYL_MODELS_DIR's contents change, rather than a separately
+    # maintained hardcoded list that can silently drift from what's
+    # actually available.
+    for model_name in list_models():
         print(f"  upscaling with: {model_name}")
         upscale(
             normalized_path,
