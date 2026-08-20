@@ -39,9 +39,7 @@ export function UploadForm({ onUpload, disabled }: UploadFormProps) {
       onUpload(file, {
         rotateOverride: override,
         upscaleModel: upscaleModel || null,
-        footerText: removeFooterText
-          ? { remove: true, heightFraction: footerHeightPercent / 100 }
-          : { remove: false, heightFraction: footerHeightPercent / 100 },
+        footerText: { remove: removeFooterText, heightFraction: footerHeightPercent / 100 },
         sdStrength,
         sdMaskBlur,
         sdSeed: seedText.trim() === "" ? null : Number(seedText),
