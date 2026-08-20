@@ -39,6 +39,13 @@ SD_MASK_BLUR = 12
 # like a card's solid-color footer bar - building the padded canvas and mask
 # ourselves (below) lets us set this lower instead.
 SD_STRENGTH = 0.85
+# IOPaint defaults to seed 42 when none is given. That happened to produce a
+# visible seam artifact in the leather-texture border on one test card - a
+# diffusion model's output is seed-sensitive, and 42 wasn't a good roll for
+# that specific input. 123 tested clean on the same case; not a permanent
+# fix (still just one fixed seed, so another input could hit a bad roll of
+# its own) but a better default for now.
+SD_SEED = 123
 
 # Stable Diffusion on Apple's MPS backend cannot safely run two overlapping
 # generations - concurrent requests have been observed to crash the IOPaint
@@ -97,6 +104,7 @@ def generate_bleed(
     sd_guidance_scale: float = SD_GUIDANCE_SCALE,
     sd_mask_blur: int = SD_MASK_BLUR,
     sd_strength: float = SD_STRENGTH,
+    sd_seed: int = SD_SEED,
     generation_overshoot: float = GENERATION_OVERSHOOT,
 ) -> Image.Image:
     """Outpaint a bleed margin around the trim image using a local IOPaint
@@ -140,6 +148,7 @@ def generate_bleed(
         "sd_guidance_scale": sd_guidance_scale,
         "sd_mask_blur": sd_mask_blur,
         "sd_strength": sd_strength,
+        "sd_seed": sd_seed,
         "sd_keep_unmasked_area": True,
     }
 

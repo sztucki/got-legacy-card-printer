@@ -75,6 +75,25 @@ Drop sample cards that already have the correct bleed into `reference-cards/`
   in this app.
 - Previously-reported "Failed to fetch" on upload did not reproduce in a clean run
   and is presumed fixed (see git history if it recurs).
+- **Bleed generation still hallucinates/produces artifacts on some cards - pick this
+  up next session**: `backend/app/pipeline/bleed.py`'s `SD_SEED` was changed from
+  IOPaint's implicit default (42) to `123` after 42 produced a visible seam artifact
+  in the leather-texture border on `reference-cards/card-to-enhance/The Roseroad.jpg`
+  with the `high-fidelity-4x` upscale model - a seed-sensitivity issue confirmed by
+  regenerating the exact same input with several seeds (42 bad, 7/123 clean, 9999 a
+  different milder artifact - see chat history/session for the comparison images).
+  123 fixed that *specific* case, verified via direct API call after restarting the
+  backend. However, the user re-tested afterward through the frontend and is still
+  seeing hallucinations - so a single fixed seed is not a real fix, just a
+  better-odds gamble. Options not yet tried: randomize the seed per job (trades
+  determinism for not getting permanently stuck on a bad roll - probably the more
+  honest fix given this is fundamentally a per-generation stochastic quality
+  problem, not a deterministic bug), add a "Regenerate bleed" endpoint/button so a
+  bad result can be re-rolled without re-running the whole pipeline, or reduce
+  `SD_STRENGTH`/tune the prompt further. Reproduce with
+  `backend/scripts/tune_bleed.py` before making further changes - IOPaint must be
+  freshly restarted first (see the slowdown issue above) so timing/behavior is
+  representative.
 
 ## Assumptions to verify
 
