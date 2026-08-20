@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CreateJobOptions } from "../api";
 import { BleedTuningFields } from "./BleedTuningFields";
-import { DEFAULT_FOOTER_HEIGHT_PERCENT, DEFAULT_MASK_BLUR, DEFAULT_STRENGTH } from "../bleedDefaults";
+import { useBleedTuningState } from "../useBleedTuningState";
 import { useUpscaleModels } from "../useUpscaleModels";
 
 interface UploadFormProps {
@@ -14,11 +14,7 @@ export function UploadForm({ onUpload, disabled }: UploadFormProps) {
   const [rotateOverride, setRotateOverride] = useState<string>("auto");
   const models = useUpscaleModels();
   const [upscaleModel, setUpscaleModel] = useState<string>("");
-  const [removeFooterText, setRemoveFooterText] = useState(true);
-  const [footerHeightPercent, setFooterHeightPercent] = useState(DEFAULT_FOOTER_HEIGHT_PERCENT);
-  const [sdStrength, setSdStrength] = useState(DEFAULT_STRENGTH);
-  const [sdMaskBlur, setSdMaskBlur] = useState(DEFAULT_MASK_BLUR);
-  const [seedText, setSeedText] = useState("");
+  const { values, handlers, toOptions } = useBleedTuningState();
 
   // Unlike RegenerateOptions, default to the first available model rather
   // than an empty "use backend default" selection - there's no prior job to
@@ -31,13 +27,14 @@ export function UploadForm({ onUpload, disabled }: UploadFormProps) {
     event.preventDefault();
     if (file) {
       const override = rotateOverride === "auto" ? null : rotateOverride === "true";
+      const tuning = toOptions();
       onUpload(file, {
         rotateOverride: override,
         upscaleModel: upscaleModel || null,
-        footerText: { remove: removeFooterText, heightFraction: footerHeightPercent / 100 },
-        sdStrength,
-        sdMaskBlur,
-        sdSeed: seedText.trim() === "" ? null : Number(seedText),
+        footerText: { remove: tuning.removeFooterText, heightFraction: tuning.footerHeightFraction },
+        sdStrength: tuning.sdStrength,
+        sdMaskBlur: tuning.sdMaskBlur,
+        sdSeed: tuning.sdSeed,
       });
     }
   }
@@ -77,19 +74,7 @@ export function UploadForm({ onUpload, disabled }: UploadFormProps) {
           ))}
         </select>
       </label>
-      <BleedTuningFields
-        sdStrength={sdStrength}
-        onSdStrengthChange={setSdStrength}
-        sdMaskBlur={sdMaskBlur}
-        onSdMaskBlurChange={setSdMaskBlur}
-        seedText={seedText}
-        onSeedTextChange={setSeedText}
-        removeFooterText={removeFooterText}
-        onRemoveFooterTextChange={setRemoveFooterText}
-        footerHeightPercent={footerHeightPercent}
-        onFooterHeightPercentChange={setFooterHeightPercent}
-        disabled={disabled}
-      />
+      <BleedTuningFields {...values} {...handlers} disabled={disabled} />
       <button type="submit" disabled={disabled || !file} style={{ marginLeft: "1rem" }}>
         {disabled ? "Processing…" : "Process card"}
       </button>
