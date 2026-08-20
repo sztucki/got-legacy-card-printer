@@ -1,11 +1,11 @@
 import { useState } from "react";
 import type { JobParams, RegenerateBleedOptions } from "../api";
 import { BleedTuningFields } from "./BleedTuningFields";
-import { DEFAULT_FOOTER_HEIGHT_PERCENT, DEFAULT_MASK_BLUR, DEFAULT_STRENGTH } from "../bleedDefaults";
+import { useBleedTuningState } from "../useBleedTuningState";
 import { useUpscaleModels } from "../useUpscaleModels";
 
 interface RegenerateOptionsProps {
-  onRegenerate: (options: RegenerateBleedOptions) => void;
+  onRegenerate: (options: RegenerateBleedOptions) => Promise<void>;
   disabled: boolean;
   // The job's own last-used settings, so a bare "Regenerate bleed" click
   // (without opening "Options…") reuses what this card actually ran with -
@@ -18,39 +18,47 @@ interface RegenerateOptionsProps {
 
 export function RegenerateOptions({ onRegenerate, disabled, jobParams }: RegenerateOptionsProps) {
   const [expanded, setExpanded] = useState(false);
-  const [sdStrength, setSdStrength] = useState(jobParams.sd_strength ?? DEFAULT_STRENGTH);
-  const [sdMaskBlur, setSdMaskBlur] = useState(jobParams.sd_mask_blur ?? DEFAULT_MASK_BLUR);
-  const [seedText, setSeedText] = useState("");
-  const [removeFooterText, setRemoveFooterText] = useState(jobParams.remove_footer_text ?? true);
-  const [footerHeightPercent, setFooterHeightPercent] = useState(
-    (jobParams.footer_height_fraction ?? DEFAULT_FOOTER_HEIGHT_PERCENT / 100) * 100
-  );
+  const { values, handlers, toOptions } = useBleedTuningState(jobParams);
   const models = useUpscaleModels();
   // Deliberately not seeded from jobParams.upscale_model - re-upscaling is an
   // explicit, opt-in action (it's slower than a bleed-only re-roll), so this
   // stays "" ("keep as-is") until the user actually picks a model.
   const [upscaleModel, setUpscaleModel] = useState<string>("");
+  // Disables the button the instant it's clicked, ahead of the parent's
+  // `disabled` prop flipping (which only happens once the next poll response
+  // comes back) - closes the window for a fast double-click to fire a second
+  // request. The backend also guards against this server-side (409 on an
+  // already-processing job), so this is purely to avoid a spurious error
+  // message, not a correctness fix.
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isDisabled = disabled || isSubmitting;
 
-  function handleRegenerateClick() {
-    onRegenerate({
-      sdStrength,
-      sdMaskBlur,
-      sdSeed: seedText.trim() === "" ? null : Number(seedText),
-      removeFooterText,
-      footerHeightFraction: footerHeightPercent / 100,
-      upscaleModel: upscaleModel || null,
-    });
+  async function handleRegenerateClick() {
+    const tuning = toOptions();
+    setIsSubmitting(true);
+    try {
+      await onRegenerate({
+        sdStrength: tuning.sdStrength,
+        sdMaskBlur: tuning.sdMaskBlur,
+        sdSeed: tuning.sdSeed,
+        removeFooterText: tuning.removeFooterText,
+        footerHeightFraction: tuning.footerHeightFraction,
+        upscaleModel: upscaleModel || null,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
     <div style={{ marginTop: "1rem" }}>
-      <button onClick={handleRegenerateClick} disabled={disabled}>
-        {disabled ? "Regenerating…" : "Regenerate bleed"}
+      <button onClick={handleRegenerateClick} disabled={isDisabled}>
+        {isDisabled ? "Regenerating…" : "Regenerate bleed"}
       </button>
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        disabled={disabled}
+        disabled={isDisabled}
         style={{ marginLeft: "0.5rem" }}
       >
         {expanded ? "Hide options" : "Options…"}
@@ -62,7 +70,7 @@ export function RegenerateOptions({ onRegenerate, disabled, jobParams }: Regener
             Upscale model (re-upscales if changed):{" "}
             <select
               value={upscaleModel}
-              disabled={disabled || models.length === 0}
+              disabled={isDisabled || models.length === 0}
               onChange={(event) => setUpscaleModel(event.target.value)}
             >
               <option value="">
@@ -75,19 +83,7 @@ export function RegenerateOptions({ onRegenerate, disabled, jobParams }: Regener
               ))}
             </select>
           </label>
-          <BleedTuningFields
-            sdStrength={sdStrength}
-            onSdStrengthChange={setSdStrength}
-            sdMaskBlur={sdMaskBlur}
-            onSdMaskBlurChange={setSdMaskBlur}
-            seedText={seedText}
-            onSeedTextChange={setSeedText}
-            removeFooterText={removeFooterText}
-            onRemoveFooterTextChange={setRemoveFooterText}
-            footerHeightPercent={footerHeightPercent}
-            onFooterHeightPercentChange={setFooterHeightPercent}
-            disabled={disabled}
-          />
+          <BleedTuningFields {...values} {...handlers} disabled={isDisabled} />
         </div>
       )}
     </div>

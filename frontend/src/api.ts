@@ -25,7 +25,7 @@ export interface FooterTextOptions {
 export interface CreateJobOptions {
   rotateOverride: boolean | null;
   upscaleModel: string | null;
-  footerText: FooterTextOptions | null;
+  footerText: FooterTextOptions;
   sdStrength: number | null;
   sdMaskBlur: number | null;
   sdSeed: number | null;
@@ -43,10 +43,8 @@ export async function createJob(
   if (options.upscaleModel !== null) {
     formData.append("upscale_model", options.upscaleModel);
   }
-  if (options.footerText !== null) {
-    formData.append("remove_footer_text", String(options.footerText.remove));
-    formData.append("footer_height_fraction", String(options.footerText.heightFraction));
-  }
+  formData.append("remove_footer_text", String(options.footerText.remove));
+  formData.append("footer_height_fraction", String(options.footerText.heightFraction));
   if (options.sdStrength !== null) {
     formData.append("sd_strength", String(options.sdStrength));
   }

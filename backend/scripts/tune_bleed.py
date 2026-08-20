@@ -14,7 +14,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _reference_images import discover_reference_images, setup_script_env  # noqa: E402
+from _reference_images import (  # noqa: E402
+    prepare_normalized,
+    run_over_reference_images,
+    setup_script_env,
+)
 
 _, REPO_ROOT = setup_script_env(__file__)
 
@@ -23,8 +27,6 @@ from PIL import Image  # noqa: E402
 from app.config import TRIM_SIZE_PX  # noqa: E402
 from app.pipeline.bleed import generate_bleed  # noqa: E402
 from app.pipeline.clean_text import remove_footer_band  # noqa: E402
-from app.pipeline.normalize import normalize  # noqa: E402
-from app.pipeline.orient import orient  # noqa: E402
 from app.pipeline.upscale import upscale  # noqa: E402
 from app.pipeline.run import DEFAULT_FOOTER_HEIGHT_FRACTION  # noqa: E402
 
@@ -49,16 +51,8 @@ SEEDS = [42, 7, 123, 9999]
 
 
 def tune_one(image_path: Path) -> None:
-    print(f"--- {image_path.name} ---")
     out_dir = OUTPUT_DIR / image_path.stem
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    original = Image.open(image_path)
-    oriented = orient(original, rotate_override=None)
-    normalized = normalize(oriented)
-
-    normalized_path = out_dir / "_normalized.png"
-    normalized.save(normalized_path)
+    _, normalized_path = prepare_normalized(image_path, out_dir)
     upscaled_path = out_dir / "_upscaled.png"
     upscale(normalized_path, upscaled_path, resize_to=TRIM_SIZE_PX)
     upscaled = Image.open(upscaled_path)
@@ -79,12 +73,7 @@ def tune_one(image_path: Path) -> None:
 
 
 def main() -> None:
-    images = discover_reference_images(REPO_ROOT, sys.argv[1:])
-    if images is None:
-        return
-
-    for image_path in images:
-        tune_one(image_path)
+    run_over_reference_images(REPO_ROOT, sys.argv[1:], tune_one)
 
 
 if __name__ == "__main__":
