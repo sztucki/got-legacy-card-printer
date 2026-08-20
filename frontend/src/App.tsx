@@ -85,12 +85,12 @@ function App() {
       <UploadForm onUpload={handleUpload} disabled={isUploading || isProcessing} />
 
       {uploadError && <p style={{ color: "red" }}>{uploadError}</p>}
-      {job?.status === "failed" && (
-        <p style={{ color: "red" }}>Processing failed: {job.error}</p>
-      )}
-      {job && job.status !== "failed" && (
+      {job && (
         <div style={{ marginTop: "2rem" }}>
           <p>Status: {job.status}</p>
+          {job.status === "failed" && (
+            <p style={{ color: "red" }}>Processing failed: {job.error}</p>
+          )}
           <SideBySideViewer
             originalUrl={job.stage_urls.original}
             originalPreviewUrl={originalPreviewUrl}
@@ -100,7 +100,7 @@ function App() {
                 : undefined
             }
           />
-          {job.stage_urls.bleed && (
+          {job.stage_urls.upscaled && (
             <div>
               <RegenerateOptions
                 key={job.job_id}
