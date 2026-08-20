@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 import uuid
 from enum import Enum
@@ -108,4 +109,11 @@ def get_state(job_id: str) -> dict:
 
 def _write_state(job_id: str, state: dict) -> None:
     path = job_dir(job_id) / STATE_FILENAME
-    path.write_text(json.dumps(state))
+    # Write to a temp file and rename over the target rather than writing
+    # the target directly - os.replace() is atomic, so a concurrent
+    # get_state() (background generation threads and the polling API
+    # endpoint share the same process) always sees either the old or the
+    # new complete file, never a partial write mid-json.dumps().
+    tmp_path = path.with_suffix(f"{path.suffix}.tmp-{uuid.uuid4().hex}")
+    tmp_path.write_text(json.dumps(state))
+    os.replace(tmp_path, path)
