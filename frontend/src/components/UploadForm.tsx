@@ -1,17 +1,15 @@
 import { useEffect, useState } from "react";
 import { getUpscaleModels } from "../api";
-import type { FooterTextOptions } from "../api";
+import type { CreateJobOptions } from "../api";
+import { BleedTuningFields } from "./BleedTuningFields";
 
 interface UploadFormProps {
-  onUpload: (
-    file: File,
-    rotateOverride: boolean | null,
-    upscaleModel: string | null,
-    footerText: FooterTextOptions | null
-  ) => void;
+  onUpload: (file: File, options: CreateJobOptions) => void;
   disabled: boolean;
 }
 
+const DEFAULT_STRENGTH = 0.85;
+const DEFAULT_MASK_BLUR = 12;
 const DEFAULT_FOOTER_HEIGHT_PERCENT = 8;
 
 export function UploadForm({ onUpload, disabled }: UploadFormProps) {
@@ -19,8 +17,11 @@ export function UploadForm({ onUpload, disabled }: UploadFormProps) {
   const [rotateOverride, setRotateOverride] = useState<string>("auto");
   const [models, setModels] = useState<string[]>([]);
   const [upscaleModel, setUpscaleModel] = useState<string>("");
-  const [removeFooterText, setRemoveFooterText] = useState(false);
+  const [removeFooterText, setRemoveFooterText] = useState(true);
   const [footerHeightPercent, setFooterHeightPercent] = useState(DEFAULT_FOOTER_HEIGHT_PERCENT);
+  const [sdStrength, setSdStrength] = useState(DEFAULT_STRENGTH);
+  const [sdMaskBlur, setSdMaskBlur] = useState(DEFAULT_MASK_BLUR);
+  const [seedText, setSeedText] = useState("");
 
   useEffect(() => {
     getUpscaleModels()
@@ -38,10 +39,16 @@ export function UploadForm({ onUpload, disabled }: UploadFormProps) {
     event.preventDefault();
     if (file) {
       const override = rotateOverride === "auto" ? null : rotateOverride === "true";
-      const footerText: FooterTextOptions | null = removeFooterText
-        ? { remove: true, heightFraction: footerHeightPercent / 100 }
-        : null;
-      onUpload(file, override, upscaleModel || null, footerText);
+      onUpload(file, {
+        rotateOverride: override,
+        upscaleModel: upscaleModel || null,
+        footerText: removeFooterText
+          ? { remove: true, heightFraction: footerHeightPercent / 100 }
+          : { remove: false, heightFraction: footerHeightPercent / 100 },
+        sdStrength,
+        sdMaskBlur,
+        sdSeed: seedText.trim() === "" ? null : Number(seedText),
+      });
     }
   }
 
@@ -80,31 +87,19 @@ export function UploadForm({ onUpload, disabled }: UploadFormProps) {
           ))}
         </select>
       </label>
-      <label style={{ marginLeft: "1rem" }}>
-        <input
-          type="checkbox"
-          checked={removeFooterText}
-          disabled={disabled}
-          onChange={(event) => setRemoveFooterText(event.target.checked)}
-        />{" "}
-        Remove blurry footer text
-      </label>
-      {removeFooterText && (
-        <label style={{ marginLeft: "1rem" }}>
-          Footer height:{" "}
-          <input
-            type="number"
-            min={1}
-            max={30}
-            step={0.5}
-            value={footerHeightPercent}
-            disabled={disabled}
-            onChange={(event) => setFooterHeightPercent(Number(event.target.value))}
-            style={{ width: "4rem" }}
-          />
-          %
-        </label>
-      )}
+      <BleedTuningFields
+        sdStrength={sdStrength}
+        onSdStrengthChange={setSdStrength}
+        sdMaskBlur={sdMaskBlur}
+        onSdMaskBlurChange={setSdMaskBlur}
+        seedText={seedText}
+        onSeedTextChange={setSeedText}
+        removeFooterText={removeFooterText}
+        onRemoveFooterTextChange={setRemoveFooterText}
+        footerHeightPercent={footerHeightPercent}
+        onFooterHeightPercentChange={setFooterHeightPercent}
+        disabled={disabled}
+      />
       <button type="submit" disabled={disabled || !file} style={{ marginLeft: "1rem" }}>
         {disabled ? "Processing…" : "Process card"}
       </button>

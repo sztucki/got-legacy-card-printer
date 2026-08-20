@@ -13,23 +13,39 @@ export interface FooterTextOptions {
   heightFraction: number;
 }
 
+export interface CreateJobOptions {
+  rotateOverride: boolean | null;
+  upscaleModel: string | null;
+  footerText: FooterTextOptions | null;
+  sdStrength: number | null;
+  sdMaskBlur: number | null;
+  sdSeed: number | null;
+}
+
 export async function createJob(
   file: File,
-  rotateOverride: boolean | null,
-  upscaleModel: string | null,
-  footerText: FooterTextOptions | null
+  options: CreateJobOptions
 ): Promise<{ job_id: string }> {
   const formData = new FormData();
   formData.append("file", file);
-  if (rotateOverride !== null) {
-    formData.append("rotate_override", String(rotateOverride));
+  if (options.rotateOverride !== null) {
+    formData.append("rotate_override", String(options.rotateOverride));
   }
-  if (upscaleModel !== null) {
-    formData.append("upscale_model", upscaleModel);
+  if (options.upscaleModel !== null) {
+    formData.append("upscale_model", options.upscaleModel);
   }
-  if (footerText !== null) {
-    formData.append("remove_footer_text", String(footerText.remove));
-    formData.append("footer_height_fraction", String(footerText.heightFraction));
+  if (options.footerText !== null) {
+    formData.append("remove_footer_text", String(options.footerText.remove));
+    formData.append("footer_height_fraction", String(options.footerText.heightFraction));
+  }
+  if (options.sdStrength !== null) {
+    formData.append("sd_strength", String(options.sdStrength));
+  }
+  if (options.sdMaskBlur !== null) {
+    formData.append("sd_mask_blur", String(options.sdMaskBlur));
+  }
+  if (options.sdSeed !== null) {
+    formData.append("sd_seed", String(options.sdSeed));
   }
 
   const response = await fetch(`${API_BASE}/api/jobs`, {
@@ -58,9 +74,30 @@ export async function getJob(jobId: string): Promise<JobState> {
   return response.json();
 }
 
-export async function regenerateBleed(jobId: string): Promise<{ job_id: string }> {
+export interface RegenerateBleedOptions {
+  sdStrength: number | null;
+  sdMaskBlur: number | null;
+  sdSeed: number | null;
+  removeFooterText: boolean;
+  footerHeightFraction: number;
+  upscaleModel: string | null;
+}
+
+export async function regenerateBleed(
+  jobId: string,
+  options: RegenerateBleedOptions
+): Promise<{ job_id: string }> {
   const response = await fetch(`${API_BASE}/api/jobs/${jobId}/regenerate-bleed`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sd_strength: options.sdStrength,
+      sd_mask_blur: options.sdMaskBlur,
+      sd_seed: options.sdSeed,
+      remove_footer_text: options.removeFooterText,
+      footer_height_fraction: options.footerHeightFraction,
+      upscale_model: options.upscaleModel,
+    }),
   });
   if (!response.ok) {
     throw new Error(`Failed to regenerate bleed: ${response.statusText}`);

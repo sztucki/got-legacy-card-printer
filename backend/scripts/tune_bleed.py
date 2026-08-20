@@ -25,9 +25,11 @@ from PIL import Image  # noqa: E402
 
 from app.config import TRIM_SIZE_PX  # noqa: E402
 from app.pipeline.bleed import generate_bleed  # noqa: E402
+from app.pipeline.clean_text import remove_footer_band  # noqa: E402
 from app.pipeline.normalize import normalize  # noqa: E402
 from app.pipeline.orient import orient  # noqa: E402
 from app.pipeline.upscale import upscale  # noqa: E402
+from app.pipeline.run import DEFAULT_FOOTER_HEIGHT_FRACTION  # noqa: E402
 
 # Fixed relative to the repo root (not JOBS_DIR, which resolves against
 # whatever the caller's cwd happens to be) so output always lands in the
@@ -35,19 +37,12 @@ from app.pipeline.upscale import upscale  # noqa: E402
 OUTPUT_DIR = REPO_ROOT / "test-outputs"
 
 # Label -> generate_bleed() keyword overrides, all run against the same
-# upscaled trim image so results are directly comparable. Add/edit entries
-# here to try new parameter combinations.
+# upscaled + footer-cleaned trim image so results are directly comparable.
+# Add/edit entries here to try new parameter combinations.
 VARIANTS = {
-    # SD_MASK_BLUR_TEXT_EDGE already applies a sharper blur near the bottom
-    # (text) edge by default - see bleed.py. "baseline" here means "current
-    # defaults, fix included."
     "baseline": {},
     "strength_70": {"sd_strength": 0.7},
     "strength_60": {"sd_strength": 0.6},
-    "strength_50": {"sd_strength": 0.5},
-    # For comparison against baseline: the pre-fix behavior, uniform blur on
-    # every edge (matches the old SD_MASK_BLUR_TEXT_EDGE == SD_MASK_BLUR).
-    "uniform_blur": {"sd_mask_blur_text_edge": 12},
 }
 
 # Diffusion output is seed-sensitive (see test-outputs/seed-diag/ and
@@ -71,10 +66,16 @@ def tune_one(image_path: Path) -> None:
     upscale(normalized_path, upscaled_path, resize_to=TRIM_SIZE_PX)
     upscaled = Image.open(upscaled_path)
 
+    # Matches run_pipeline's default (remove_footer_text=True) so tuning
+    # results reflect what actually ships.
+    cleaned = remove_footer_band(upscaled, DEFAULT_FOOTER_HEIGHT_FRACTION)
+    cleaned_path = out_dir / "_cleaned.png"
+    cleaned.save(cleaned_path)
+
     for label, overrides in VARIANTS.items():
         for seed in SEEDS:
             print(f"  generating: {label}_seed{seed} ({overrides or 'defaults'})")
-            result = generate_bleed(upscaled, sd_seed=seed, **overrides)
+            result = generate_bleed(cleaned, sd_seed=seed, **overrides)
             result.save(out_dir / f"{label}_seed{seed}.png")
 
     print(f"  wrote variants to {out_dir}")

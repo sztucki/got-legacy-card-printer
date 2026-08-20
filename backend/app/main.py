@@ -7,12 +7,22 @@ load_dotenv()
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from app import jobs
 from app.config import JOBS_DIR
 from app.jobs import JobStatus, STAGE_FILENAMES
 from app.pipeline.run import DEFAULT_FOOTER_HEIGHT_FRACTION, regenerate_bleed_stage, run_pipeline
 from app.pipeline.upscale import list_models
+
+
+class RegenerateBleedRequest(BaseModel):
+    sd_strength: Optional[float] = None
+    sd_mask_blur: Optional[int] = None
+    sd_seed: Optional[int] = None
+    remove_footer_text: bool = True
+    footer_height_fraction: float = DEFAULT_FOOTER_HEIGHT_FRACTION
+    upscale_model: Optional[str] = None
 
 app = FastAPI(title="Legacy Card Bleed Printer")
 
@@ -38,8 +48,11 @@ async def create_job(
     file: UploadFile = File(...),
     rotate_override: Optional[bool] = Form(None),
     upscale_model: Optional[str] = Form(None),
-    remove_footer_text: bool = Form(False),
+    remove_footer_text: bool = Form(True),
     footer_height_fraction: float = Form(DEFAULT_FOOTER_HEIGHT_FRACTION),
+    sd_strength: Optional[float] = Form(None),
+    sd_mask_blur: Optional[int] = Form(None),
+    sd_seed: Optional[int] = Form(None),
 ):
     job_id = jobs.create_job()
     original_path = jobs.stage_path(job_id, "original")
@@ -53,6 +66,9 @@ async def create_job(
         upscale_model,
         remove_footer_text,
         footer_height_fraction,
+        sd_strength,
+        sd_mask_blur,
+        sd_seed,
     )
     return {"job_id": job_id}
 
@@ -72,7 +88,11 @@ async def get_job(job_id: str):
 
 
 @app.post("/api/jobs/{job_id}/regenerate-bleed")
-async def regenerate_bleed(job_id: str, background_tasks: BackgroundTasks):
+async def regenerate_bleed(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    options: RegenerateBleedRequest = RegenerateBleedRequest(),
+):
     try:
         state = jobs.get_state(job_id)
     except FileNotFoundError:
@@ -80,12 +100,21 @@ async def regenerate_bleed(job_id: str, background_tasks: BackgroundTasks):
 
     if state["status"] == JobStatus.PROCESSING.value:
         raise HTTPException(status_code=409, detail="Job is still processing")
-    if not state["stages"].get("cleaned"):
+    if not state["stages"].get("upscaled"):
         raise HTTPException(
             status_code=400,
             detail="Job hasn't reached the bleed-generation stage yet",
         )
 
     jobs.set_status(job_id, JobStatus.PROCESSING)
-    background_tasks.add_task(regenerate_bleed_stage, job_id)
+    background_tasks.add_task(
+        regenerate_bleed_stage,
+        job_id,
+        options.sd_strength,
+        options.sd_mask_blur,
+        options.sd_seed,
+        options.remove_footer_text,
+        options.footer_height_fraction,
+        options.upscale_model,
+    )
     return {"job_id": job_id}

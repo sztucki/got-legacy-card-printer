@@ -15,12 +15,47 @@ from app.pipeline.upscale import upscale
 DEFAULT_FOOTER_HEIGHT_FRACTION = 0.08
 
 
+def _clean_footer(job_id: str, upscaled: Image.Image, remove_footer_text: bool, footer_height_fraction: float) -> None:
+    cleaned_path = jobs.stage_path(job_id, "cleaned")
+    if remove_footer_text:
+        remove_footer_band(upscaled, footer_height_fraction).save(cleaned_path)
+    else:
+        upscaled.save(cleaned_path)
+    jobs.mark_stage_complete(job_id, "cleaned")
+
+
+def _generate_and_save_bleed(
+    job_id: str,
+    sd_strength: Optional[float],
+    sd_mask_blur: Optional[int],
+    sd_seed: Optional[int],
+) -> None:
+    cleaned = Image.open(jobs.stage_path(job_id, "cleaned"))
+
+    overrides = {}
+    if sd_strength is not None:
+        overrides["sd_strength"] = sd_strength
+    if sd_mask_blur is not None:
+        overrides["sd_mask_blur"] = sd_mask_blur
+    if sd_seed is not None:
+        overrides["sd_seed"] = sd_seed
+
+    bled = generate_bleed(cleaned, **overrides)
+    if bled.size != BLEED_SIZE_PX:
+        bled = bled.resize(BLEED_SIZE_PX, Image.LANCZOS)
+    bled.save(jobs.stage_path(job_id, "bleed"))
+    jobs.mark_stage_complete(job_id, "bleed")
+
+
 def run_pipeline(
     job_id: str,
     rotate_override: Optional[bool] = None,
     upscale_model: Optional[str] = None,
-    remove_footer_text: bool = False,
+    remove_footer_text: bool = True,
     footer_height_fraction: float = DEFAULT_FOOTER_HEIGHT_FRACTION,
+    sd_strength: Optional[float] = None,
+    sd_mask_blur: Optional[int] = None,
+    sd_seed: Optional[int] = None,
 ) -> None:
     try:
         jobs.set_status(job_id, JobStatus.PROCESSING)
@@ -48,18 +83,8 @@ def run_pipeline(
         )
         jobs.mark_stage_complete(job_id, "upscaled")
 
-        cleaned_path = jobs.stage_path(job_id, "cleaned")
-        if remove_footer_text:
-            remove_footer_band(Image.open(upscaled_path), footer_height_fraction).save(cleaned_path)
-        else:
-            Image.open(upscaled_path).save(cleaned_path)
-        jobs.mark_stage_complete(job_id, "cleaned")
-
-        bled = generate_bleed(Image.open(cleaned_path))
-        if bled.size != BLEED_SIZE_PX:
-            bled = bled.resize(BLEED_SIZE_PX, Image.LANCZOS)
-        bled.save(jobs.stage_path(job_id, "bleed"))
-        jobs.mark_stage_complete(job_id, "bleed")
+        _clean_footer(job_id, Image.open(upscaled_path), remove_footer_text, footer_height_fraction)
+        _generate_and_save_bleed(job_id, sd_strength, sd_mask_blur, sd_seed)
 
         jobs.set_status(job_id, JobStatus.COMPLETE)
     except Exception as exc:
@@ -67,22 +92,40 @@ def run_pipeline(
         raise
 
 
-def regenerate_bleed_stage(job_id: str) -> None:
-    """Re-run just the bleed-generation stage for an already-processed job,
-    with a fresh random seed, without repeating orient/normalize/upscale/
-    footer-clean. Lets a bad stochastic roll be re-rolled cheaply instead of
-    re-running the whole (much slower) pipeline."""
+def regenerate_bleed_stage(
+    job_id: str,
+    sd_strength: Optional[float] = None,
+    sd_mask_blur: Optional[int] = None,
+    sd_seed: Optional[int] = None,
+    remove_footer_text: bool = True,
+    footer_height_fraction: float = DEFAULT_FOOTER_HEIGHT_FRACTION,
+    upscale_model: Optional[str] = None,
+) -> None:
+    """Re-run the bleed-generation stage (and, if upscale_model is given, the
+    upscale step too) for an already-processed job, without repeating
+    orient/normalize. Lets a bad stochastic roll be re-rolled cheaply instead
+    of re-running the whole (much slower) pipeline, and lets bleed/footer/
+    upscale params be experimented with interactively against an
+    already-uploaded card. Only the bleed params explicitly passed in
+    override generate_bleed()'s module defaults; sd_seed=None picks a fresh
+    random seed rather than reusing the original fixed default."""
     try:
         jobs.set_status(job_id, JobStatus.PROCESSING)
 
-        cleaned = Image.open(jobs.stage_path(job_id, "cleaned"))
-        seed = random.randint(0, 2**31 - 1)
+        upscaled_path = jobs.stage_path(job_id, "upscaled")
+        if upscale_model is not None:
+            upscale(
+                jobs.stage_path(job_id, "normalized"),
+                upscaled_path,
+                resize_to=TRIM_SIZE_PX,
+                model_name=upscale_model,
+            )
+            jobs.mark_stage_complete(job_id, "upscaled")
 
-        bled = generate_bleed(cleaned, sd_seed=seed)
-        if bled.size != BLEED_SIZE_PX:
-            bled = bled.resize(BLEED_SIZE_PX, Image.LANCZOS)
-        bled.save(jobs.stage_path(job_id, "bleed"))
-        jobs.mark_stage_complete(job_id, "bleed")
+        _clean_footer(job_id, Image.open(upscaled_path), remove_footer_text, footer_height_fraction)
+
+        seed = sd_seed if sd_seed is not None else random.randint(0, 2**31 - 1)
+        _generate_and_save_bleed(job_id, sd_strength, sd_mask_blur, seed)
 
         jobs.set_status(job_id, JobStatus.COMPLETE)
     except Exception as exc:
