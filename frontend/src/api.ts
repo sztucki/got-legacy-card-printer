@@ -8,10 +8,16 @@ export interface JobState {
   stage_urls: Record<string, string>;
 }
 
+export interface FooterTextOptions {
+  remove: boolean;
+  heightFraction: number;
+}
+
 export async function createJob(
   file: File,
   rotateOverride: boolean | null,
-  upscaleModel: string | null
+  upscaleModel: string | null,
+  footerText: FooterTextOptions | null
 ): Promise<{ job_id: string }> {
   const formData = new FormData();
   formData.append("file", file);
@@ -20,6 +26,10 @@ export async function createJob(
   }
   if (upscaleModel !== null) {
     formData.append("upscale_model", upscaleModel);
+  }
+  if (footerText !== null) {
+    formData.append("remove_footer_text", String(footerText.remove));
+    formData.append("footer_height_fraction", String(footerText.heightFraction));
   }
 
   const response = await fetch(`${API_BASE}/api/jobs`, {

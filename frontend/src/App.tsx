@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createJob, getJob } from "./api";
-import type { JobState } from "./api";
+import type { FooterTextOptions, JobState } from "./api";
 import { UploadForm } from "./components/UploadForm";
 import { SideBySideViewer } from "./components/SideBySideViewer";
 import "./App.css";
@@ -25,7 +25,8 @@ function App() {
   async function handleUpload(
     file: File,
     rotateOverride: boolean | null,
-    upscaleModel: string | null
+    upscaleModel: string | null,
+    footerText: FooterTextOptions | null
   ) {
     if (isUploading || isProcessing) return;
 
@@ -37,7 +38,7 @@ function App() {
     setOriginalPreviewUrl(previewUrlRef.current);
 
     try {
-      const { job_id } = await createJob(file, rotateOverride, upscaleModel);
+      const { job_id } = await createJob(file, rotateOverride, upscaleModel, footerText);
       pollJob(job_id);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");

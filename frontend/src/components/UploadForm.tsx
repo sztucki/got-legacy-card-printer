@@ -1,16 +1,26 @@
 import { useEffect, useState } from "react";
 import { getUpscaleModels } from "../api";
+import type { FooterTextOptions } from "../api";
 
 interface UploadFormProps {
-  onUpload: (file: File, rotateOverride: boolean | null, upscaleModel: string | null) => void;
+  onUpload: (
+    file: File,
+    rotateOverride: boolean | null,
+    upscaleModel: string | null,
+    footerText: FooterTextOptions | null
+  ) => void;
   disabled: boolean;
 }
+
+const DEFAULT_FOOTER_HEIGHT_PERCENT = 8;
 
 export function UploadForm({ onUpload, disabled }: UploadFormProps) {
   const [file, setFile] = useState<File | null>(null);
   const [rotateOverride, setRotateOverride] = useState<string>("auto");
   const [models, setModels] = useState<string[]>([]);
   const [upscaleModel, setUpscaleModel] = useState<string>("");
+  const [removeFooterText, setRemoveFooterText] = useState(false);
+  const [footerHeightPercent, setFooterHeightPercent] = useState(DEFAULT_FOOTER_HEIGHT_PERCENT);
 
   useEffect(() => {
     getUpscaleModels()
@@ -28,7 +38,10 @@ export function UploadForm({ onUpload, disabled }: UploadFormProps) {
     event.preventDefault();
     if (file) {
       const override = rotateOverride === "auto" ? null : rotateOverride === "true";
-      onUpload(file, override, upscaleModel || null);
+      const footerText: FooterTextOptions | null = removeFooterText
+        ? { remove: true, heightFraction: footerHeightPercent / 100 }
+        : null;
+      onUpload(file, override, upscaleModel || null, footerText);
     }
   }
 
@@ -67,6 +80,31 @@ export function UploadForm({ onUpload, disabled }: UploadFormProps) {
           ))}
         </select>
       </label>
+      <label style={{ marginLeft: "1rem" }}>
+        <input
+          type="checkbox"
+          checked={removeFooterText}
+          disabled={disabled}
+          onChange={(event) => setRemoveFooterText(event.target.checked)}
+        />{" "}
+        Remove blurry footer text
+      </label>
+      {removeFooterText && (
+        <label style={{ marginLeft: "1rem" }}>
+          Footer height:{" "}
+          <input
+            type="number"
+            min={1}
+            max={30}
+            step={0.5}
+            value={footerHeightPercent}
+            disabled={disabled}
+            onChange={(event) => setFooterHeightPercent(Number(event.target.value))}
+            style={{ width: "4rem" }}
+          />
+          %
+        </label>
+      )}
       <button type="submit" disabled={disabled || !file} style={{ marginLeft: "1rem" }}>
         {disabled ? "Processing…" : "Process card"}
       </button>

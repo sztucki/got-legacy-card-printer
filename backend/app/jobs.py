@@ -21,7 +21,8 @@ STAGE_FILENAMES = {
     "oriented": "01-oriented.png",
     "normalized": "02-normalized.png",
     "upscaled": "03-upscaled.png",
-    "bleed": "04-bleed.png",
+    "cleaned": "04-cleaned.png",
+    "bleed": "05-bleed.png",
 }
 
 

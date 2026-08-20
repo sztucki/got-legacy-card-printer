@@ -6,15 +6,20 @@ from app import jobs
 from app.config import BLEED_SIZE_PX, TRIM_SIZE_PX, UPSCAYL_MODEL_NAME
 from app.jobs import JobStatus
 from app.pipeline.bleed import generate_bleed
+from app.pipeline.clean_text import remove_footer_band
 from app.pipeline.normalize import normalize
 from app.pipeline.orient import orient
 from app.pipeline.upscale import upscale
+
+DEFAULT_FOOTER_HEIGHT_FRACTION = 0.08
 
 
 def run_pipeline(
     job_id: str,
     rotate_override: Optional[bool] = None,
     upscale_model: Optional[str] = None,
+    remove_footer_text: bool = False,
+    footer_height_fraction: float = DEFAULT_FOOTER_HEIGHT_FRACTION,
 ) -> None:
     try:
         jobs.set_status(job_id, JobStatus.PROCESSING)
@@ -42,7 +47,14 @@ def run_pipeline(
         )
         jobs.mark_stage_complete(job_id, "upscaled")
 
-        bled = generate_bleed(Image.open(upscaled_path))
+        cleaned_path = jobs.stage_path(job_id, "cleaned")
+        if remove_footer_text:
+            remove_footer_band(Image.open(upscaled_path), footer_height_fraction).save(cleaned_path)
+        else:
+            Image.open(upscaled_path).save(cleaned_path)
+        jobs.mark_stage_complete(job_id, "cleaned")
+
+        bled = generate_bleed(Image.open(cleaned_path))
         if bled.size != BLEED_SIZE_PX:
             bled = bled.resize(BLEED_SIZE_PX, Image.LANCZOS)
         bled.save(jobs.stage_path(job_id, "bleed"))

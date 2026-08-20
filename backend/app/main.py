@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app import jobs
 from app.config import JOBS_DIR
 from app.jobs import STAGE_FILENAMES
-from app.pipeline.run import run_pipeline
+from app.pipeline.run import DEFAULT_FOOTER_HEIGHT_FRACTION, run_pipeline
 from app.pipeline.upscale import list_models
 
 app = FastAPI(title="Legacy Card Bleed Printer")
@@ -38,13 +38,22 @@ async def create_job(
     file: UploadFile = File(...),
     rotate_override: Optional[bool] = Form(None),
     upscale_model: Optional[str] = Form(None),
+    remove_footer_text: bool = Form(False),
+    footer_height_fraction: float = Form(DEFAULT_FOOTER_HEIGHT_FRACTION),
 ):
     job_id = jobs.create_job()
     original_path = jobs.stage_path(job_id, "original")
     original_path.write_bytes(await file.read())
     jobs.mark_stage_complete(job_id, "original")
 
-    background_tasks.add_task(run_pipeline, job_id, rotate_override, upscale_model)
+    background_tasks.add_task(
+        run_pipeline,
+        job_id,
+        rotate_override,
+        upscale_model,
+        remove_footer_text,
+        footer_height_fraction,
+    )
     return {"job_id": job_id}
 
 
