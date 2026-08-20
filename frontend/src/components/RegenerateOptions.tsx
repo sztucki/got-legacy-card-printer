@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
-import { getUpscaleModels } from "../api";
+import { useState } from "react";
 import type { JobParams, RegenerateBleedOptions } from "../api";
 import { BleedTuningFields } from "./BleedTuningFields";
 import { DEFAULT_FOOTER_HEIGHT_PERCENT, DEFAULT_MASK_BLUR, DEFAULT_STRENGTH } from "../bleedDefaults";
+import { useUpscaleModels } from "../useUpscaleModels";
 
 interface RegenerateOptionsProps {
   onRegenerate: (options: RegenerateBleedOptions) => void;
@@ -25,20 +25,11 @@ export function RegenerateOptions({ onRegenerate, disabled, jobParams }: Regener
   const [footerHeightPercent, setFooterHeightPercent] = useState(
     (jobParams.footer_height_fraction ?? DEFAULT_FOOTER_HEIGHT_PERCENT / 100) * 100
   );
-  const [models, setModels] = useState<string[]>([]);
+  const models = useUpscaleModels();
   // Deliberately not seeded from jobParams.upscale_model - re-upscaling is an
   // explicit, opt-in action (it's slower than a bleed-only re-roll), so this
   // stays "" ("keep as-is") until the user actually picks a model.
   const [upscaleModel, setUpscaleModel] = useState<string>("");
-
-  useEffect(() => {
-    getUpscaleModels()
-      .then(({ models }) => setModels(models))
-      .catch(() => {
-        // Model list is a nice-to-have - re-upscaling just isn't offered if
-        // it can't be fetched (upscale_model stays unset, i.e. "keep as-is").
-      });
-  }, []);
 
   function handleRegenerateClick() {
     onRegenerate({

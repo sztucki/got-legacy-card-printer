@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { getUpscaleModels } from "../api";
 import type { CreateJobOptions } from "../api";
 import { BleedTuningFields } from "./BleedTuningFields";
 import { DEFAULT_FOOTER_HEIGHT_PERCENT, DEFAULT_MASK_BLUR, DEFAULT_STRENGTH } from "../bleedDefaults";
+import { useUpscaleModels } from "../useUpscaleModels";
 
 interface UploadFormProps {
   onUpload: (file: File, options: CreateJobOptions) => void;
@@ -12,7 +12,7 @@ interface UploadFormProps {
 export function UploadForm({ onUpload, disabled }: UploadFormProps) {
   const [file, setFile] = useState<File | null>(null);
   const [rotateOverride, setRotateOverride] = useState<string>("auto");
-  const [models, setModels] = useState<string[]>([]);
+  const models = useUpscaleModels();
   const [upscaleModel, setUpscaleModel] = useState<string>("");
   const [removeFooterText, setRemoveFooterText] = useState(true);
   const [footerHeightPercent, setFooterHeightPercent] = useState(DEFAULT_FOOTER_HEIGHT_PERCENT);
@@ -20,17 +20,12 @@ export function UploadForm({ onUpload, disabled }: UploadFormProps) {
   const [sdMaskBlur, setSdMaskBlur] = useState(DEFAULT_MASK_BLUR);
   const [seedText, setSeedText] = useState("");
 
+  // Unlike RegenerateOptions, default to the first available model rather
+  // than an empty "use backend default" selection - there's no prior job to
+  // show "(keep as-is)" against yet.
   useEffect(() => {
-    getUpscaleModels()
-      .then(({ models }) => {
-        setModels(models);
-        setUpscaleModel((current) => current || models[0] || "");
-      })
-      .catch(() => {
-        // Model list is a nice-to-have - fall back to the backend's own
-        // default (upscale_model omitted) if it can't be fetched.
-      });
-  }, []);
+    setUpscaleModel((current) => current || models[0] || "");
+  }, [models]);
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
