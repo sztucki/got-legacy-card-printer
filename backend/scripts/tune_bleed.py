@@ -38,11 +38,22 @@ OUTPUT_DIR = REPO_ROOT / "test-outputs"
 # upscaled trim image so results are directly comparable. Add/edit entries
 # here to try new parameter combinations.
 VARIANTS = {
+    # SD_MASK_BLUR_TEXT_EDGE already applies a sharper blur near the bottom
+    # (text) edge by default - see bleed.py. "baseline" here means "current
+    # defaults, fix included."
     "baseline": {},
     "strength_70": {"sd_strength": 0.7},
     "strength_60": {"sd_strength": 0.6},
     "strength_50": {"sd_strength": 0.5},
+    # For comparison against baseline: the pre-fix behavior, uniform blur on
+    # every edge (matches the old SD_MASK_BLUR_TEXT_EDGE == SD_MASK_BLUR).
+    "uniform_blur": {"sd_mask_blur_text_edge": 12},
 }
+
+# Diffusion output is seed-sensitive (see test-outputs/seed-diag/ and
+# README's Known Issues) - sweeping several seeds per variant turns "did we
+# get a lucky roll" into a visible comparison grid instead of a coincidence.
+SEEDS = [42, 7, 123, 9999]
 
 
 def tune_one(image_path: Path) -> None:
@@ -61,9 +72,10 @@ def tune_one(image_path: Path) -> None:
     upscaled = Image.open(upscaled_path)
 
     for label, overrides in VARIANTS.items():
-        print(f"  generating: {label} ({overrides or 'defaults'})")
-        result = generate_bleed(upscaled, **overrides)
-        result.save(out_dir / f"{label}.png")
+        for seed in SEEDS:
+            print(f"  generating: {label}_seed{seed} ({overrides or 'defaults'})")
+            result = generate_bleed(upscaled, sd_seed=seed, **overrides)
+            result.save(out_dir / f"{label}_seed{seed}.png")
 
     print(f"  wrote variants to {out_dir}")
 

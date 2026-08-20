@@ -1,3 +1,4 @@
+import random
 from typing import Optional
 
 from PIL import Image
@@ -55,6 +56,29 @@ def run_pipeline(
         jobs.mark_stage_complete(job_id, "cleaned")
 
         bled = generate_bleed(Image.open(cleaned_path))
+        if bled.size != BLEED_SIZE_PX:
+            bled = bled.resize(BLEED_SIZE_PX, Image.LANCZOS)
+        bled.save(jobs.stage_path(job_id, "bleed"))
+        jobs.mark_stage_complete(job_id, "bleed")
+
+        jobs.set_status(job_id, JobStatus.COMPLETE)
+    except Exception as exc:
+        jobs.set_status(job_id, JobStatus.FAILED, error=str(exc))
+        raise
+
+
+def regenerate_bleed_stage(job_id: str) -> None:
+    """Re-run just the bleed-generation stage for an already-processed job,
+    with a fresh random seed, without repeating orient/normalize/upscale/
+    footer-clean. Lets a bad stochastic roll be re-rolled cheaply instead of
+    re-running the whole (much slower) pipeline."""
+    try:
+        jobs.set_status(job_id, JobStatus.PROCESSING)
+
+        cleaned = Image.open(jobs.stage_path(job_id, "cleaned"))
+        seed = random.randint(0, 2**31 - 1)
+
+        bled = generate_bleed(cleaned, sd_seed=seed)
         if bled.size != BLEED_SIZE_PX:
             bled = bled.resize(BLEED_SIZE_PX, Image.LANCZOS)
         bled.save(jobs.stage_path(job_id, "bleed"))

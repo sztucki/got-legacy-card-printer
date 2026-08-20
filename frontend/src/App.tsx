@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { createJob, getJob } from "./api";
+import { createJob, getJob, regenerateBleed } from "./api";
 import type { FooterTextOptions, JobState } from "./api";
 import { UploadForm } from "./components/UploadForm";
 import { SideBySideViewer } from "./components/SideBySideViewer";
@@ -12,8 +12,16 @@ function App() {
   const [originalPreviewUrl, setOriginalPreviewUrl] = useState<string>("");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  const [bleedVersion, setBleedVersion] = useState(0);
   const pollRef = useRef<number | null>(null);
   const previewUrlRef = useRef<string>("");
+
+  useEffect(() => {
+    if (job?.status === "complete") {
+      setBleedVersion((v) => v + 1);
+    }
+  }, [job?.status, job?.job_id]);
 
   useEffect(() => {
     return () => {
@@ -62,6 +70,17 @@ function App() {
     pollRef.current = window.setInterval(poll, POLL_INTERVAL_MS);
   }
 
+  async function handleRegenerate() {
+    if (!job || isProcessing) return;
+    setRegenerateError(null);
+    try {
+      await regenerateBleed(job.job_id);
+      pollJob(job.job_id);
+    } catch (err) {
+      setRegenerateError(err instanceof Error ? err.message : "Regenerate failed");
+    }
+  }
+
   const isProcessing = job !== null && job.status !== "complete" && job.status !== "failed";
 
   return (
@@ -79,8 +98,22 @@ function App() {
           <SideBySideViewer
             originalUrl={job.stage_urls.original}
             originalPreviewUrl={originalPreviewUrl}
-            finalUrl={job.stage_urls.bleed}
+            finalUrl={
+              job.stage_urls.bleed
+                ? `${job.stage_urls.bleed}?v=${bleedVersion}`
+                : undefined
+            }
           />
+          {job.stage_urls.bleed && (
+            <div style={{ marginTop: "1rem" }}>
+              <button onClick={handleRegenerate} disabled={isProcessing}>
+                {isProcessing ? "Regenerating…" : "Regenerate bleed"}
+              </button>
+              {regenerateError && (
+                <p style={{ color: "red" }}>{regenerateError}</p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

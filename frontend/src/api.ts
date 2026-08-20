@@ -58,6 +58,16 @@ export async function getJob(jobId: string): Promise<JobState> {
   return response.json();
 }
 
+export async function regenerateBleed(jobId: string): Promise<{ job_id: string }> {
+  const response = await fetch(`${API_BASE}/api/jobs/${jobId}/regenerate-bleed`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to regenerate bleed: ${response.statusText}`);
+  }
+  return response.json();
+}
+
 export function resolveStageUrl(url: string): string {
   return `${API_BASE}${url}`;
 }

@@ -10,8 +10,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app import jobs
 from app.config import JOBS_DIR
-from app.jobs import STAGE_FILENAMES
-from app.pipeline.run import DEFAULT_FOOTER_HEIGHT_FRACTION, run_pipeline
+from app.jobs import JobStatus, STAGE_FILENAMES
+from app.pipeline.run import DEFAULT_FOOTER_HEIGHT_FRACTION, regenerate_bleed_stage, run_pipeline
 from app.pipeline.upscale import list_models
 
 app = FastAPI(title="Legacy Card Bleed Printer")
@@ -69,3 +69,23 @@ async def get_job(job_id: str):
         for stage in state["stages"]
     }
     return {**state, "job_id": job_id, "stage_urls": stage_urls}
+
+
+@app.post("/api/jobs/{job_id}/regenerate-bleed")
+async def regenerate_bleed(job_id: str, background_tasks: BackgroundTasks):
+    try:
+        state = jobs.get_state(job_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if state["status"] == JobStatus.PROCESSING.value:
+        raise HTTPException(status_code=409, detail="Job is still processing")
+    if not state["stages"].get("cleaned"):
+        raise HTTPException(
+            status_code=400,
+            detail="Job hasn't reached the bleed-generation stage yet",
+        )
+
+    jobs.set_status(job_id, JobStatus.PROCESSING)
+    background_tasks.add_task(regenerate_bleed_stage, job_id)
+    return {"job_id": job_id}
